@@ -15,7 +15,7 @@ from keyboards import (
     admin_approve_keyboard, subscription_keyboard, donate_keyboard,
     terms_keyboard
 )
-from .utils import sanitize_email, TERMS_TEXT
+from .utils import sanitize_email, TERMS_TEXT, make_qr_image
 from .states import RegStates
 
 router = Router()
@@ -38,7 +38,6 @@ async def request_subscription(message: Message, state: FSMContext):
         await message.answer("⏳ Заявка уже отправлена. Жди одобрения админа.")
         return
 
-    # Показываем соглашение
     await message.answer(
         TERMS_TEXT,
         reply_markup=terms_keyboard(),
@@ -153,6 +152,17 @@ async def approve_callback(callback: CallbackQuery):
             parse_mode="Markdown"
         )
 
+        # Отправляем QR-код
+        try:
+            qr_file = make_qr_image(sub_url)
+            await callback.bot.send_photo(
+                telegram_id,
+                photo=qr_file,
+                caption="📷 QR-код для быстрого подключения\n\nОткрой Happ → «+» → «Сканировать QR»"
+            )
+        except Exception as e:
+            logger.error(f"Ошибка QR: {e}")
+
     except Exception as e:
         logger.error(f"❌ Ошибка при одобрении {user['xui_email']}: {e}")
         await callback.message.edit_text(f"❌ Ошибка: {e}")
@@ -215,6 +225,16 @@ async def my_subscription(message: Message):
         reply_markup=subscription_keyboard(),
         parse_mode="Markdown"
     )
+
+    # Отправляем QR-код
+    try:
+        qr_file = make_qr_image(sub_url)
+        await message.answer_photo(
+            photo=qr_file,
+            caption="📷 QR-код для быстрого подключения\n\nОткрой Happ → «+» → «Сканировать QR»"
+        )
+    except Exception as e:
+        logger.error(f"Ошибка QR: {e}")
 
 
 @router.callback_query(F.data == "renew")
