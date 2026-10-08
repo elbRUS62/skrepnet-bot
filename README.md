@@ -1,6 +1,21 @@
-# SkrepNet Bot
+<div align="center">
 
-Telegram-бот для выдачи бесплатных VPN-подписок через панель **3x-ui** (Hysteria2) с системой донатов и админ-панелью.
+# 🛡️ SkrepNet Bot
+
+### Бесплатный VPN для своих
+
+**Telegram-бот для выдачи подписок Hysteria2 через панель 3x-ui**
+
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![aiogram](https://img.shields.io/badge/aiogram-3.13-2CA5E0?logo=telegram&logoColor=white)](https://aiogram.dev/)
+[![3x-ui](https://img.shields.io/badge/3x--ui-3.9.0-green)](https://github.com/MHSanaei/3x-ui)
+[![Stars](https://img.shields.io/badge/⭐_Telegram_Stars-поддержка-yellow)]()
+
+</div>
+
+---
+
+## ✨ Возможности
 
 ## ✨ Возможности
 
@@ -74,17 +89,6 @@ cd skrepnet-bot
 - API-токен вместо пароля
 - Systemd с Restart=always
 - Смени токены после первой настройки
-
-## 💰 Экономика
-
-Для покрытия ~3000 руб/мес нужно:
-
-| Способ | Комиссия | Собрать |
-|--------|----------|---------|
-| Telegram Stars | ~30% | ~4300 руб |
-| DonationAlerts | ~8,5% | ~3300 руб |
-
-~30 пользователей × 110–150 руб/мес — покрывают сервер.
 
 ## 🗺️ Roadmap
 
