@@ -9,6 +9,8 @@
 [![3x-ui](https://img.shields.io/badge/3x--ui-3.9.0-green)](https://github.com/MHSanaei/3x-ui)
 [![Stars](https://img.shields.io/badge/⭐_Telegram_Stars-поддержка-yellow)]()
 
+**🤖 [Открыть бота](https://t.me/skrepnet_bot) · 👤 [Автор](https://t.me/elb62)**
+
 </div>
 
 ---
