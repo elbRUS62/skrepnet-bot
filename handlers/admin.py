@@ -299,7 +299,9 @@ async def admin_extend_process(message: Message, state: FSMContext):
             await xui._post(f"/panel/api/clients/update/{user['xui_email']}", {
                 "email": user["xui_email"],
                 "expiryTime": expires_ms,
-                "limitIp": 3
+                "limitIp": 3,
+                "enable": True,
+                "totalGB": 0
             })
 
         await renew_user(user["telegram_id"], new_expires=new_expiry)

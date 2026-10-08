@@ -83,7 +83,9 @@ class XUIClient:
         payload = {
             "email": email,
             "expiryTime": expires_ms,
-            "limitIp": LIMIT_IP
+            "limitIp": LIMIT_IP,
+            "enable": True,
+            "totalGB": 0
         }
         result = await self._post(f"/panel/api/clients/update/{email}", payload)
         if not result.get("success"):
