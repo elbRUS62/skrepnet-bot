@@ -47,8 +47,9 @@ Telegram-бот для выдачи бесплатных VPN-подписок ч
 Скопируй команды и выполни на сервере:
 
 ``` git clone https://github.com/elbRUS62/skrepnet-bot.git
-cd skrepnet-bot
-./install.sh
+ skrepnet-bot
+cd skrepnet-bot                                          
+./install.sh                                             
 ```
 
 Скрипт задаст все вопросы и настроит бота автоматически.
