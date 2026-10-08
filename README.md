@@ -48,8 +48,8 @@
 
 ## 📋 Требования
 
-- VPS за рубежом — ~200–500 руб/мес
-- VPS с 3x-ui (Hysteria2) — ~3000 руб/мес
+- VPS за рубежом
+- VPS с 3x-ui (Hysteria2)
 - Python 3.10+
 - API-токен 3x-ui (Settings -> Security -> API Tokens)
 - Бот в Telegram (создаётся через @BotFather)
