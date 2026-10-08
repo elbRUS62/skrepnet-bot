@@ -7,7 +7,7 @@ def main_menu():
         keyboard=[
             [KeyboardButton(text="❤️ Поддержать проект")],
             [KeyboardButton(text="📦 Получить подписку"), KeyboardButton(text="🔑 Моя подписка")],
-            [KeyboardButton(text="👥 Пригласить друга")]
+            [KeyboardButton(text="👥 Пригласить друга"), KeyboardButton(text="🆘 Поддержка")]
         ],
         resize_keyboard=True,
         is_persistent=True
@@ -19,8 +19,9 @@ def admin_menu():
         keyboard=[
             [KeyboardButton(text="❤️ Поддержать проект")],
             [KeyboardButton(text="📦 Получить подписку"), KeyboardButton(text="🔑 Моя подписка")],
-            [KeyboardButton(text="👥 Пригласить друга"), KeyboardButton(text="📊 Статистика")],
-            [KeyboardButton(text="🛠 Управление"), KeyboardButton(text="📋 История обновлений")]
+            [KeyboardButton(text="👥 Пригласить друга"), KeyboardButton(text="🆘 Поддержка")],
+            [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🛠 Управление")],
+            [KeyboardButton(text="📋 История обновлений")]
         ],
         resize_keyboard=True,
         is_persistent=True
@@ -123,4 +124,9 @@ def admin_panel_keyboard():
     panel_url = "https://ru-skrepnet.duckdns.org:3775/MASbquuCRx18QVK8l6/panel"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔐 Войти в 3x-ui", url=panel_url)]
+    ])
+
+def support_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🆘 Поддержка", url="https://t.me/skrepnet_support")]
     ])

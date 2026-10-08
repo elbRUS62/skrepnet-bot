@@ -5,7 +5,7 @@ from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery
 
 from config import ADMIN_IDS, DONATE_TEXT, DONATE_URL, BOT_USERNAME
 from database import get_user
-from keyboards import donate_keyboard, donate_stars_keyboard, share_keyboard
+from keyboards import donate_keyboard, donate_stars_keyboard, share_keyboard, support_keyboard
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -109,4 +109,15 @@ async def invite_friend(message: Message):
         f"💡 Отправь ссылку друзьям — они получат бесплатный VPN.",
         reply_markup=share_keyboard(BOT_USERNAME, message.from_user.id),
         parse_mode="Markdown"
+    )
+
+@router.message(F.text == "🆘 Поддержка")
+async def support_button(message: Message):
+    await message.answer(
+        "🆘 <b>Поддержка SkrepNet</b>\n\n"
+        "Если у тебя возникли вопросы, проблемы с подключением "
+        "или ты хочешь сообщить о сбое — напиши нам.\n\n"
+        "📢 Канал поддержки: @skrepnet_support",
+        reply_markup=support_keyboard(),
+        parse_mode="HTML"
     )
