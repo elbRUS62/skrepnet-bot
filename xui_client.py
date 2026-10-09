@@ -1,3 +1,4 @@
+import hashlib
 import aiohttp
 import random
 import string
@@ -43,8 +44,8 @@ class XUIClient:
         """Создать клиента сразу в двух инбаундах."""
         expires_ms = int((datetime.now() + timedelta(days=SUBSCRIPTION_DAYS)).timestamp() * 1000)
 
-        # Генерируем subId вручную (16 символов [0-9a-z])
-        sub_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=16))
+        # Генерируем subId из email — гарантированно уникальный
+        sub_id = hashlib.md5(email.encode()).hexdigest()[:16]
 
         payload = {
             "client": {
