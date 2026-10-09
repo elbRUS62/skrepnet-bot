@@ -7,7 +7,7 @@ from aiogram.types import Message
 from aiogram.filters import CommandStart, CommandObject
 
 from config import ADMIN_IDS
-from database import get_user, create_user_request, increment_invites
+from database import get_user, create_user_request, increment_invites, add_invite
 from keyboards import main_menu, admin_menu
 from .utils import sanitize_email
 
@@ -50,6 +50,13 @@ async def cmd_start_ref(message: Message, command: CommandObject):
             await db.commit()
 
         await increment_invites(invited_by)
+        await add_invite(
+            inviter_id=invited_by,
+            invited_user_id=message.from_user.id,
+            invited_username=message.from_user.username,
+            invited_first_name=message.from_user.first_name,
+            invite_type="ref"
+        )
 
         try:
             await message.bot.send_message(

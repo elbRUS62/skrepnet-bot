@@ -40,9 +40,11 @@ class XUIClient:
                 raise Exception("Unauthorized: API token is invalid or expired")
             return await resp.json()
 
-    async def add_client(self, email: str) -> str:
+    async def add_client(self, email: str, days: int = None) -> str:
         """Создать клиента сразу в двух инбаундах."""
-        expires_ms = int((datetime.now() + timedelta(days=SUBSCRIPTION_DAYS)).timestamp() * 1000)
+        if days is None:
+            days = SUBSCRIPTION_DAYS
+        expires_ms = int((datetime.now() + timedelta(days=days)).timestamp() * 1000)
 
         # Генерируем subId из email — гарантированно уникальный
         sub_id = hashlib.md5(email.encode()).hexdigest()[:16]

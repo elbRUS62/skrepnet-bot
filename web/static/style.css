@@ -1,0 +1,113 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0d1117;
+    color: #c9d1d9;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 20px;
+}
+
+.card {
+    background: #161b22;
+    border: 1px solid #30363d;
+    border-radius: 16px;
+    padding: 32px;
+    max-width: 440px;
+    width: 100%;
+}
+
+h1 {
+    color: #58a6ff;
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.subtitle {
+    color: #8b949e;
+    margin-bottom: 20px;
+    text-align: center;
+    line-height: 1.6;
+}
+
+.terms {
+    background: #0d1117;
+    border: 1px solid #30363d;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 20px;
+}
+
+.terms p {
+    margin-bottom: 12px;
+    color: #c9d1d9;
+}
+
+.terms ul {
+    list-style: none;
+    padding: 0;
+}
+
+.terms li {
+    margin-bottom: 8px;
+}
+
+.terms a {
+    color: #58a6ff;
+    text-decoration: none;
+    font-size: 15px;
+}
+
+.terms a:hover {
+    text-decoration: underline;
+}
+
+.checkbox-wrap {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 20px;
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+.checkbox-wrap input {
+    margin-top: 3px;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+button {
+    width: 100%;
+    padding: 16px;
+    background: #238636;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+button:hover:not(:disabled) { background: #2ea043; }
+button:disabled { background: #30363d; color: #6e7681; cursor: not-allowed; }
+
+.result {
+    margin-top: 20px;
+    font-size: 14px;
+    text-align: center;
+    line-height: 1.6;
+}
+
+.result.error { color: #f85149; }
+.result.success { color: #3fb950; }
+
+.result a {
+    color: #58a6ff;
+    word-break: break-all;
+}

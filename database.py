@@ -1,4 +1,5 @@
 import aiosqlite
+import secrets
 from datetime import datetime, timedelta
 from config import DB_PATH, SUBSCRIPTION_DAYS, ADMIN_IDS
 
@@ -29,8 +30,36 @@ async def init_db():
                 added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS invite_links (
+                token TEXT PRIMARY KEY,
+                created_by INTEGER NOT NULL,
+                friend_user_id INTEGER,
+                friend_username TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                used_at TIMESTAMP,
+                is_used INTEGER DEFAULT 0,
+                xui_email TEXT,
+                sub_id TEXT
+            )
+        """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS invites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                inviter_id INTEGER NOT NULL,
+                invited_user_id INTEGER,
+                invited_username TEXT,
+                invited_first_name TEXT,
+                type TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         await db.commit()
 
+
+# ============================================================
+# ПОЛЬЗОВАТЕЛИ
+# ============================================================
 
 async def get_user(telegram_id: int):
     async with aiosqlite.connect(DB_PATH) as db:
@@ -142,6 +171,25 @@ async def get_invites_count(telegram_id: int) -> int:
     return user["invites_count"] if user else 0
 
 
+async def delete_user(telegram_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM users WHERE telegram_id = ?", (telegram_id,))
+        await db.commit()
+
+
+async def get_inactive_users(days: int = 30) -> list:
+    """Пользователи, у которых подписка истекла более N дней назад."""
+    cutoff = datetime.now() - timedelta(days=days)
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM users
+            WHERE status = 'active'
+            AND expires_at < ?
+        """, (cutoff,)) as cur:
+            return await cur.fetchall()
+
+
 # ============================================================
 # АДМИНЫ
 # ============================================================
@@ -177,37 +225,106 @@ async def get_all_admins() -> list:
             return await cur.fetchall()
 
 
-async def delete_user(telegram_id: int):
+# ============================================================
+# ОДНОРАЗОВЫЕ ССЫЛКИ-ПРИГЛАШЕНИЯ (для друзей без Telegram)
+# ============================================================
+
+async def create_invite_link(telegram_id: int, friend_user_id: int = None,
+                              friend_username: str = None) -> str:
+    """Создаёт одноразовую ссылку-приглашение.
+    Возвращает уникальный токен."""
+    token = secrets.token_urlsafe(24)
+
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("DELETE FROM users WHERE telegram_id = ?", (telegram_id,))
+        await db.execute("""
+            INSERT INTO invite_links
+            (token, created_by, friend_user_id, friend_username)
+            VALUES (?, ?, ?, ?)
+        """, (token, telegram_id, friend_user_id, friend_username))
         await db.commit()
 
+    return token
 
-async def get_inactive_users(days: int = 30) -> list:
-    cutoff = datetime.now() - timedelta(days=days)
+
+async def get_invite_link(token: str):
+    """Получает приглашение по токену (только активное, до 7 дней)."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
-            SELECT * FROM users
-            WHERE status = 'active'
-            AND expires_at < ?
-        """, (cutoff,)) as cur:
-            return await cur.fetchall()
-async def get_inactive_users(days: int = 30) -> list:
-    """Пользователи, у которых подписка истекла более N дней назад."""
-    cutoff = datetime.now() - timedelta(days=days)
+            SELECT * FROM invite_links
+            WHERE token = ? AND is_used = 0
+            AND created_at > datetime('now', '-7 days')
+        """, (token,)) as cur:
+            return await cur.fetchone()
+
+
+async def use_invite_link(token: str, xui_email: str, sub_id: str) -> bool:
+    """Помечает ссылку использованной и сохраняет данные клиента."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute("""
+            UPDATE invite_links
+            SET is_used = 1, used_at = ?, xui_email = ?, sub_id = ?
+            WHERE token = ? AND is_used = 0
+        """, (datetime.now(), xui_email, sub_id, token))
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+
+# ============================================================
+# УЧЁТ ПРИГЛАШЕНИЙ (для админ-статистики)
+# ============================================================
+
+async def add_invite(inviter_id: int, invited_user_id: int = None,
+                      invited_username: str = None, invited_first_name: str = None,
+                      invite_type: str = "ref"):
+    """Записывает приглашение.
+    invite_type: 'ref' (реферальная) или 'no_tg' (без Telegram).
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO invites
+            (inviter_id, invited_user_id, invited_username, invited_first_name, type)
+            VALUES (?, ?, ?, ?, ?)
+        """, (inviter_id, invited_user_id, invited_username, invited_first_name, invite_type))
+        await db.commit()
+
+
+async def get_global_invites_stats() -> dict:
+    """Общая статистика по всем приглашениям."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        async with db.execute(
+            "SELECT COUNT(*) as c FROM invites WHERE type = 'ref'"
+        ) as cur:
+            ref_count = (await cur.fetchone())["c"]
+
+        async with db.execute(
+            "SELECT COUNT(*) as c FROM invites WHERE type = 'no_tg'"
+        ) as cur:
+            no_tg_count = (await cur.fetchone())["c"]
+
+        return {
+            "ref": ref_count,
+            "no_tg": no_tg_count,
+            "total": ref_count + no_tg_count
+        }
+
+
+async def get_top_inviters(limit: int = 5) -> list:
+    """Топ пользователей по количеству приглашений."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
-            SELECT * FROM users
-            WHERE status = 'active'
-            AND expires_at < ?
-        """, (cutoff,)) as cur:
+            SELECT
+                inviter_id,
+                COUNT(CASE WHEN type = 'ref' THEN 1 END) as ref_count,
+                COUNT(CASE WHEN type = 'no_tg' THEN 1 END) as no_tg_count,
+                COUNT(*) as total
+            FROM invites
+            GROUP BY inviter_id
+            ORDER BY total DESC
+            LIMIT ?
+        """, (limit,)) as cur:
             return await cur.fetchall()
-
-
-async def delete_user(telegram_id: int):
-    """Удалить пользователя из базы."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("DELETE FROM users WHERE telegram_id = ?", (telegram_id,))
-        await db.commit()

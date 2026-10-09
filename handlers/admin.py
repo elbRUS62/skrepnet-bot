@@ -10,8 +10,9 @@ from aiogram.filters import Command
 
 from config import ADMIN_IDS, DB_PATH
 from database import (
-    get_user_by_username, is_admin, add_admin, remove_admin,
-    get_all_admins, delete_user, renew_user
+    get_user, get_user_by_username, is_admin, add_admin, remove_admin,
+    get_all_admins, delete_user, renew_user,
+    get_global_invites_stats, get_top_inviters
 )
 from xui_client import XUIClient
 from keyboards import (
@@ -51,19 +52,42 @@ async def cmd_stats(message: Message):
         ) as cur:
             expiring = (await cur.fetchone())["c"]
 
-        async with db.execute("SELECT SUM(invites_count) as s FROM users") as cur:
-            row = await cur.fetchone()
-            total_invites = row["s"] or 0
+    invites_stats = await get_global_invites_stats()
+    top_inviters = await get_top_inviters(5)
 
-    await message.answer(
+    text = (
         f"📊 <b>Статистика SkrepNet</b>\n\n"
         f"👥 Всего: {total}\n"
         f"✅ Активных: {active}\n"
         f"⏳ Ожидают: {pending}\n"
-        f"⏰ Истекают через 3 дня: {expiring}\n"
-        f"📢 Приглашений: {total_invites}",
-        parse_mode="HTML"
+        f"⏰ Истекают через 3 дня: {expiring}\n\n"
+        f"📢 <b>Приглашения:</b>\n"
+        f"• По реферальным: {invites_stats['ref']}\n"
+        f"• Без Telegram: {invites_stats['no_tg']}\n"
+        f"• Всего: {invites_stats['total']}\n\n"
     )
+
+    if top_inviters:
+        text += "🏆 <b>Топ-5 приглашающих:</b>\n"
+        for i, inviter in enumerate(top_inviters, 1):
+            user_data = await get_user(inviter["inviter_id"])
+            if user_data and user_data["username"]:
+                name = f"@{user_data['username']}"
+            elif user_data and user_data["first_name"]:
+                name = user_data["first_name"]
+            else:
+                name = f"ID {inviter['inviter_id']}"
+
+            text += (
+                f"{i}. {name}\n"
+                f"   ├ реферальных: {inviter['ref_count']}\n"
+                f"   ├ без TG: {inviter['no_tg_count']}\n"
+                f"   └ всего: {inviter['total']}\n"
+            )
+    else:
+        text += "🏆 Пока нет приглашений."
+
+    await message.answer(text, parse_mode="HTML")
 
 
 # ============================================================

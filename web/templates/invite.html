@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SkrepNet — Подписка</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="card">
+        <h1>🛡️ SkrepNet</h1>
+        <p class="subtitle">
+            Бесплатный VPN на 30 дней, с возможностью продления.
+        </p>
+
+        <div class="terms">
+            <p>Для получения подписки ознакомься с документами:</p>
+            <ul>
+                <li><a href="https://telegra.ph/Pravila-ispolzovaniya-10-09" target="_blank">📜 Правила использования</a></li>
+                <li><a href="https://telegra.ph/Politika-konfidencialnosti-10-09-83" target="_blank">🔒 Политика конфиденциальности</a></li>
+                <li><a href="https://telegra.ph/Polzovatelskoe-soglashenie-10-09-52" target="_blank">📋 Пользовательское соглашение</a></li>
+            </ul>
+        </div>
+
+        <label class="checkbox-wrap">
+            <input type="checkbox" id="agree" onchange="toggleButton()">
+            <span>Я прочитал и принимаю все условия</span>
+        </label>
+
+        <button id="activateBtn" onclick="activate()" disabled>
+            ✅ Получить подписку
+        </button>
+
+        <div class="result" id="result"></div>
+    </div>
+
+    <script>
+        const token = "{{ token }}";
+
+        function toggleButton() {
+            document.getElementById('activateBtn').disabled = !document.getElementById('agree').checked;
+        }
+
+        async function activate() {
+            const btn = document.getElementById('activateBtn');
+            const result = document.getElementById('result');
+
+            if (!document.getElementById('agree').checked) {
+                result.className = 'result error';
+                result.textContent = 'Сначала примите условия';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Создаю подписку...';
+
+            try {
+                const res = await fetch(`/api/activate/${token}`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({accepted_terms: true})
+                });
+
+                const data = await res.json();
+
+                if (data.error) {
+                    result.className = 'result error';
+                    result.textContent = data.error;
+                    btn.disabled = false;
+                    btn.textContent = 'Попробовать снова';
+                } else {
+                    result.innerHTML = `
+                        <div style="text-align:center;">
+                            <div style="font-size:22px;font-weight:700;color:#3fb950;margin-bottom:20px;">
+                                Подписка активирована!
+                            </div>
+
+                            <div style="background:#0d1117;border:2px solid #3fb950;border-radius:12px;padding:20px;margin-bottom:20px;">
+                                <div style="font-size:15px;font-weight:600;color:#c9d1d9;margin-bottom:12px;">
+                                    Отсканируй QR-код в Happ
+                                </div>
+                                <img src="data:image/png;base64,${data.qr_base64}"
+                                     style="width:100%;max-width:280px;height:auto;background:white;padding:12px;border-radius:8px;display:block;margin:0 auto;">
+                            </div>
+
+                            <div style="background:#0d1117;border-radius:8px;padding:16px;margin-bottom:20px;">
+                                <div style="font-size:14px;color:#8b949e;margin-bottom:8px;">Ссылка на подписку:</div>
+                                <code style="display:block;color:#58a6ff;font-size:12px;word-break:break-all;padding:10px;background:#161b22;border-radius:6px;border:1px solid #30363d;">${data.sub_url}</code>
+                            </div>
+
+                            <div style="background:linear-gradient(135deg,#1f6feb 0%,#388bfd 100%);border-radius:12px;padding:18px;text-align:left;">
+                                <div style="font-size:16px;font-weight:700;color:white;margin-bottom:10px;">Как подключиться:</div>
+                                <ol style="margin:0;padding-left:20px;color:white;font-size:14px;line-height:1.8;">
+                                    <li>Скачай <b>Happ</b> (App Store / Google Play / happ.su)</li>
+                                    <li>Открой Happ → «+» → «Добавить подписку»</li>
+                                    <li>Вставь ссылку или отсканируй QR</li>
+                                    <li>Выбери сервер → подключись</li>
+                                </ol>
+                            </div>
+                        </div>
+                    `;
+                    btn.style.display = 'none';
+                    document.querySelector('.checkbox-wrap').style.display = 'none';
+                }
+            } catch (e) {
+                result.className = 'result error';
+                result.textContent = 'Ошибка соединения';
+                btn.disabled = false;
+                btn.textContent = 'Попробовать снова';
+            }
+        }
+    </script>
+</body>
+</html>
+

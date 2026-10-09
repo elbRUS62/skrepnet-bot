@@ -1,5 +1,10 @@
+
 from docs_config import DOCS
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import (
+    InlineKeyboardMarkup, InlineKeyboardButton,
+    ReplyKeyboardMarkup, KeyboardButton,
+    KeyboardButtonRequestUsers
+)
 from config import DONATE_URL
 
 
@@ -9,7 +14,7 @@ def main_menu():
             [KeyboardButton(text="❤️ Поддержать проект")],
             [KeyboardButton(text="📦 Получить подписку"), KeyboardButton(text="🔑 Моя подписка")],
             [KeyboardButton(text="👥 Пригласить друга"), KeyboardButton(text="🆘 Техподдержка")],
-            [KeyboardButton(text="📚 Документы")]
+            [KeyboardButton(text="➕ Добавить без Telegram"), KeyboardButton(text="📚 Документы")]
         ],
         resize_keyboard=True,
         is_persistent=True
@@ -22,8 +27,9 @@ def admin_menu():
             [KeyboardButton(text="❤️ Поддержать проект")],
             [KeyboardButton(text="📦 Получить подписку"), KeyboardButton(text="🔑 Моя подписка")],
             [KeyboardButton(text="👥 Пригласить друга"), KeyboardButton(text="🆘 Техподдержка")],
+            [KeyboardButton(text="➕ Добавить без Telegram"), KeyboardButton(text="📚 Документы")],
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🛠 Управление")],
-            [KeyboardButton(text="📋 История обновлений"), KeyboardButton(text="📚 Документы")]
+            [KeyboardButton(text="📋 История обновлений")]
         ],
         resize_keyboard=True,
         is_persistent=True
@@ -155,4 +161,34 @@ def terms_keyboard():
 def back_to_documents_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_main")]
+    ])
+
+def invite_no_tg_keyboard():
+    """Клавиатура для добавления друга без Telegram."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(
+                text="👤 Выбрать из контактов",
+                request_users=KeyboardButtonRequestUsers(
+                    request_id=1,
+                    user_is_bot=False,
+                    max_quantity=1,
+                    request_name=True,
+                    request_username=True
+                )
+            )],
+            [KeyboardButton(text="✍️ Ввести @username или ID вручную")],
+            [KeyboardButton(text="❌ Отмена")]
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+
+def invite_share_keyboard(invite_url: str):
+    """Кнопка «Поделиться» с готовой ссылкой."""
+    share_text = "Присоединяйся к SkrepNet — бесплатный VPN!"
+    share_url = f"https://t.me/share/url?url={invite_url}&text={share_text}"
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="📤 Поделиться ссылкой", url=share_url)]
     ])
