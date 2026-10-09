@@ -54,7 +54,8 @@ class DonationAlertsCentrifugo:
 
     async def _handle_donation(self, data: dict):
         try:
-            username = data.get("username", "Аноним")
+            logger.info(f"Донат data: {data}")
+            username = data.get("username") or "Аноним"
             amount = data.get("amount", 0)
             currency = data.get("currency", "RUB")
             message = data.get("message", "")
@@ -69,6 +70,7 @@ class DonationAlertsCentrifugo:
             }.get(currency, currency)
 
             logger.info(f"Новый донат: {username} - {amount} {currency}")
+            logger.info(f"Admin IDs: {self.admin_ids}")
 
             text = (
                 f"💰 <b>Новый донат!</b>\n"
@@ -81,17 +83,19 @@ class DonationAlertsCentrifugo:
                 text += f"\n💬 <b>Сообщение:</b>\n<i>{message}</i>"
 
             for admin_id in self.admin_ids:
+                logger.info(f"Отправляю админу {admin_id}...")
                 try:
-                    await self.bot.send_message(
+                    result = await self.bot.send_message(
                         admin_id,
                         text,
                         parse_mode="HTML",
                         disable_notification=True
                     )
+                    logger.info(f"✅ Отправлено админу {admin_id}: message_id={result.message_id}")
                 except Exception as e:
-                    logger.error(f"Ошибка отправки админу {admin_id}: {e}")
+                    logger.error(f"❌ Ошибка отправки админу {admin_id}: {type(e).__name__}: {e}")
         except Exception as e:
-            logger.error(f"Ошибка обработки доната: {e}")
+            logger.error(f"❌ Ошибка обработки доната: {type(e).__name__}: {e}")
 
     async def start(self, bot: Bot, admin_ids: list):
         self.bot = bot
