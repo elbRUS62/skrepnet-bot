@@ -78,6 +78,7 @@ def renew_keyboard():
 def subscription_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📖 Как подключиться", callback_data="connect_help")],
+        [InlineKeyboardButton(text="📷 QR-код", callback_data="show_qr")],
         [InlineKeyboardButton(text="🔄 Продлить", callback_data="renew")],
         [InlineKeyboardButton(text="❤️ Поддержать", url=DONATE_URL)]
     ])

@@ -6,7 +6,7 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 
-from config import ADMIN_IDS, DONATE_TEXT, DB_PATH
+from config import ADMIN_IDS, DONATE_TEXT, DB_PATH, SUB_BASE_URL, SUB_PATH
 from database import (
     get_user, create_user_request, approve_user, renew_user
 )
@@ -70,6 +70,7 @@ async def accept_terms(callback: CallbackQuery):
         invited_by=invited_by
     )
 
+    logger.info(f"📨 Отправляю уведомления админам: {ADMIN_IDS}")
     for admin_id in ADMIN_IDS:
         try:
             await callback.bot.send_message(
@@ -82,6 +83,7 @@ async def accept_terms(callback: CallbackQuery):
                 f"✅ Согласие с условиями: да",
                 reply_markup=admin_approve_keyboard(callback.from_user.id)
             )
+            logger.info(f"✅ Уведомление отправлено админу {admin_id}")
         except Exception as e:
             logger.error(f"❌ Ошибка уведомления админу {admin_id}: {e}")
 
@@ -146,22 +148,12 @@ async def approve_callback(callback: CallbackQuery):
             f"🔗 Ссылка на подписку:\n`{sub_url}`\n\n"
             f"📱 Лимит: 3 IP одновременно.\n"
             f"⏳ Срок: 30 дней. Продлить можно через «🔑 Моя подписка».\n\n"
+            f"📷 QR-код — по кнопке «📷 QR-код» ниже.\n\n"
             f"📢 Помоги проекту расти — пригласи друзей.\n\n"
             f"{DONATE_TEXT}",
             reply_markup=subscription_keyboard(),
             parse_mode="Markdown"
         )
-
-        # Отправляем QR-код
-        try:
-            qr_file = make_qr_image(sub_url)
-            await callback.bot.send_photo(
-                telegram_id,
-                photo=qr_file,
-                caption="📷 QR-код для быстрого подключения\n\nОткрой Happ → «+» → «Сканировать QR»"
-            )
-        except Exception as e:
-            logger.error(f"Ошибка QR: {e}")
 
     except Exception as e:
         logger.error(f"❌ Ошибка при одобрении {user['xui_email']}: {e}")
@@ -220,21 +212,36 @@ async def my_subscription(message: Message):
         f"📱 Лимит: 3 IP одновременно\n"
         f"📊 Трафик: ↓{traffic_down:.2f} GB / ↑{traffic_up:.2f} GB\n\n"
         f"Хочешь продлить — жми «🔄 Продлить».\n"
+        f"Нужен QR-код? Жми «📷 QR-код».\n"
         f"Первый раз подключаешься? Жми «📖 Как подключиться».\n\n"
         f"{DONATE_TEXT}",
         reply_markup=subscription_keyboard(),
         parse_mode="Markdown"
     )
 
-    # Отправляем QR-код
+
+@router.callback_query(F.data == "show_qr")
+async def show_qr_callback(callback: CallbackQuery):
+    """Отправляет QR-код по запросу."""
+    user = await get_user(callback.from_user.id)
+
+    if not user or user["status"] != "active":
+        await callback.answer("Нет активной подписки", show_alert=True)
+        return
+
+    sub_url = f"{SUB_BASE_URL}{SUB_PATH}{user['sub_id']}"
+
     try:
         qr_file = make_qr_image(sub_url)
-        await message.answer_photo(
+        await callback.message.answer_photo(
             photo=qr_file,
-            caption="📷 QR-код для быстрого подключения\n\nОткрой Happ → «+» → «Сканировать QR»"
+            caption="📷 QR-код для быстрого подключения\n\n"
+                    "Открой Happ → «+» → «Сканировать QR»"
         )
+        await callback.answer()
     except Exception as e:
         logger.error(f"Ошибка QR: {e}")
+        await callback.answer("Ошибка при создании QR", show_alert=True)
 
 
 @router.callback_query(F.data == "renew")
