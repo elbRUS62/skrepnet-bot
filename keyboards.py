@@ -1,3 +1,4 @@
+from docs_config import DOCS
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from config import DONATE_URL
 
@@ -7,7 +8,8 @@ def main_menu():
         keyboard=[
             [KeyboardButton(text="❤️ Поддержать проект")],
             [KeyboardButton(text="📦 Получить подписку"), KeyboardButton(text="🔑 Моя подписка")],
-            [KeyboardButton(text="👥 Пригласить друга"), KeyboardButton(text="🆘 Поддержка")]
+            [KeyboardButton(text="👥 Пригласить друга"), KeyboardButton(text="🆘 Техподдержка")],
+            [KeyboardButton(text="📚 Документы")]
         ],
         resize_keyboard=True,
         is_persistent=True
@@ -19,9 +21,9 @@ def admin_menu():
         keyboard=[
             [KeyboardButton(text="❤️ Поддержать проект")],
             [KeyboardButton(text="📦 Получить подписку"), KeyboardButton(text="🔑 Моя подписка")],
-            [KeyboardButton(text="👥 Пригласить друга"), KeyboardButton(text="🆘 Поддержка")],
+            [KeyboardButton(text="👥 Пригласить друга"), KeyboardButton(text="🆘 Техподдержка")],
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🛠 Управление")],
-            [KeyboardButton(text="📋 История обновлений")]
+            [KeyboardButton(text="📋 История обновлений"), KeyboardButton(text="📚 Документы")]
         ],
         resize_keyboard=True,
         is_persistent=True
@@ -130,4 +132,27 @@ def admin_panel_keyboard():
 def support_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🆘 Поддержка", url="https://t.me/skrepnet_support")]
+    ])
+
+def documents_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=DOCS["rules"]["title"], url=DOCS["rules"]["url"])],
+        [InlineKeyboardButton(text=DOCS["privacy"]["title"], url=DOCS["privacy"]["url"])],
+        [InlineKeyboardButton(text=DOCS["terms"]["title"], url=DOCS["terms"]["url"])],
+        [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_main")]
+    ])
+
+
+def terms_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text=DOCS["rules"]["title"], url=DOCS["rules"]["url"])],
+        [InlineKeyboardButton(text=DOCS["privacy"]["title"], url=DOCS["privacy"]["url"])],
+        [InlineKeyboardButton(text=DOCS["terms"]["title"], url=DOCS["terms"]["url"])],
+        [InlineKeyboardButton(text="✅ Я согласен со всеми условиями", callback_data="accept_terms")],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="decline_terms")]
+    ])
+
+def back_to_documents_keyboard():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_main")]
     ])

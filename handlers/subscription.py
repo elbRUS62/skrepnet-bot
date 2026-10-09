@@ -13,9 +13,10 @@ from database import (
 from xui_client import XUIClient
 from keyboards import (
     admin_approve_keyboard, subscription_keyboard, donate_keyboard,
-    terms_keyboard
+    documents_keyboard, terms_keyboard, back_to_documents_keyboard,
+    main_menu, admin_menu
 )
-from .utils import sanitize_email, TERMS_TEXT, make_qr_image
+from .utils import sanitize_email, make_qr_image
 from .states import RegStates
 
 router = Router()
@@ -39,7 +40,12 @@ async def request_subscription(message: Message, state: FSMContext):
         return
 
     await message.answer(
-        TERMS_TEXT,
+        "📜 <b>Для получения подписки ознакомься с документами:</b>\n\n"
+        "1. 📜 Правила использования\n"
+        "2. 🔒 Политика конфиденциальности\n"
+        "3. 📋 Пользовательское соглашение\n\n"
+        "Нажимая «✅ Я согласен со всеми условиями», ты подтверждаешь, "
+        "что ознакомился со всеми документами.",
         reply_markup=terms_keyboard(),
         parse_mode="HTML"
     )
@@ -56,7 +62,6 @@ async def accept_terms(callback: CallbackQuery):
     name = callback.from_user.username or callback.from_user.first_name or f"user{callback.from_user.id}"
     xui_email = sanitize_email(name, callback.from_user.id)
 
-    # Проверяем, пришёл ли по рефералке
     invited_by = user["invited_by"] if user else None
     is_referral = invited_by is not None
 
@@ -96,6 +101,15 @@ async def accept_terms(callback: CallbackQuery):
                 parse_mode="HTML"
             )
 
+            # Получаем данные пригласившего
+            inviter = await get_user(invited_by)
+            if inviter:
+                inviter_username = f"@{inviter['username']}" if inviter["username"] else ""
+                inviter_first = inviter["first_name"] or ""
+                inviter_name = f"{inviter_username} ({inviter_first})" if inviter_username and inviter_first else inviter_username or inviter_first or str(invited_by)
+            else:
+                inviter_name = str(invited_by)
+
             # Уведомляем админов
             for admin_id in ADMIN_IDS:
                 try:
@@ -105,7 +119,7 @@ async def accept_terms(callback: CallbackQuery):
                         f"👤 {callback.from_user.full_name}\n"
                         f"🆔 <code>{callback.from_user.id}</code>\n"
                         f"📧 {xui_email}\n"
-                        f"👥 Пригласил: <code>{invited_by}</code>",
+                        f"👥 Пригласил: {inviter_name}",
                         parse_mode="HTML",
                         disable_notification=True
                     )
@@ -115,7 +129,7 @@ async def accept_terms(callback: CallbackQuery):
         except Exception as e:
             logger.error(f"❌ Ошибка при создании реферала: {e}")
             await callback.message.edit_text(
-                f"❌ Ошибка. Обратись в поддержку: @skrepnet_support"
+                f"❌ Ошибка. Обратись в поддержку: @SkrepNet_support"
             )
 
     else:
@@ -193,14 +207,13 @@ async def approve_callback(callback: CallbackQuery):
         await callback.bot.send_message(
             telegram_id,
             f"🎉 Твоя подписка готова!\n\n"
-            f"🔗 Ссылка на подписку:\n`{sub_url}`\n\n"
-            f"📱 Лимит: 3 IP одновременно.\n"
+            f"🔗 Ссылка:\n<code>{sub_url}</code>\n\n"
+            f"📱 Лимит: 3 IP одновременно\n"
             f"⏳ Срок: 30 дней. Продлить можно через «🔑 Моя подписка».\n\n"
-            f"📷 QR-код — по кнопке «📷 QR-код» ниже.\n\n"
             f"📢 Помоги проекту расти — пригласи друзей.\n\n"
             f"{DONATE_TEXT}",
             reply_markup=subscription_keyboard(),
-            parse_mode="Markdown"
+            parse_mode="HTML"
         )
 
     except Exception as e:
@@ -270,7 +283,6 @@ async def my_subscription(message: Message):
 
 @router.callback_query(F.data == "show_qr")
 async def show_qr_callback(callback: CallbackQuery):
-    """Отправляет QR-код по запросу."""
     user = await get_user(callback.from_user.id)
 
     if not user or user["status"] != "active":
@@ -317,3 +329,30 @@ async def renew_callback(callback: CallbackQuery):
 
     except Exception as e:
         await callback.answer(f"Ошибка: {e}", show_alert=True)
+
+
+# ============================================================
+# ДОКУМЕНТЫ (в любое время)
+# ============================================================
+
+@router.message(F.text == "📚 Документы")
+async def show_documents_menu(message: Message):
+    await message.answer(
+        "📚 <b>Документы SkrepNet</b>\n\n"
+        "Выбери документ для просмотра:",
+        reply_markup=documents_keyboard(),
+        parse_mode="HTML"
+    )
+
+
+@router.callback_query(F.data == "back_to_main")
+async def back_to_main(callback: CallbackQuery):
+    is_admin = callback.from_user.id in ADMIN_IDS
+    menu = admin_menu() if is_admin else main_menu()
+
+    await callback.message.delete()
+    await callback.message.answer(
+        "🏠 Главное меню",
+        reply_markup=menu
+    )
+    await callback.answer()
