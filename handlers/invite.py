@@ -33,7 +33,7 @@ async def invite_no_tg_start(message: Message):
         "• Выбрать из контактов Telegram\n"
         "• Или ввести @username / ID вручную\n\n"
         "После этого я создам одноразовую ссылку, "
-        "которую ты передашь другу любым способом.",
+        "которую ты передашь любым способом.",
         reply_markup=invite_no_tg_keyboard(),
         parse_mode="HTML"
     )
