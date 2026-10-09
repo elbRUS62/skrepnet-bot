@@ -1,4 +1,6 @@
 import logging
+import aiosqlite
+from config import DB_PATH
 
 from aiogram import Router, F
 from aiogram.types import Message
@@ -29,14 +31,24 @@ async def cmd_start_ref(message: Message, command: CommandObject):
 
     existing = await get_user(message.from_user.id)
 
+    # Если пользователь НЕ в базе и пришёл по рефералке — просто показываем старт
+    # invited_by сохраним в accept_terms через deep_link
     if existing is None and invited_by:
-        await create_user_request(
-            message.from_user.id,
-            message.from_user.username or "",
-            message.from_user.first_name or "",
-            sanitize_email(message.from_user.username, message.from_user.id),
-            invited_by=invited_by
-        )
+        # Запоминаем в базе со статусом 'new'
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute("""
+                INSERT OR REPLACE INTO users
+                (telegram_id, username, first_name, xui_email, status, invited_by)
+                VALUES (?, ?, ?, ?, 'new', ?)
+            """, (
+                message.from_user.id,
+                message.from_user.username or "",
+                message.from_user.first_name or "",
+                sanitize_email(message.from_user.username, message.from_user.id),
+                invited_by
+            ))
+            await db.commit()
+
         await increment_invites(invited_by)
 
         try:
@@ -50,7 +62,6 @@ async def cmd_start_ref(message: Message, command: CommandObject):
             pass
 
     await _show_start(message)
-
 
 @router.message(CommandStart())
 async def cmd_start(message: Message):

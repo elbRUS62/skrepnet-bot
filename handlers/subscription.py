@@ -53,14 +53,19 @@ async def accept_terms(callback: CallbackQuery):
         await callback.answer("У тебя уже есть подписка", show_alert=True)
         return
 
-    if user and user["status"] == "pending":
+    name = callback.from_user.username or callback.from_user.first_name or f"user{callback.from_user.id}"
+    xui_email = sanitize_email(name, callback.from_user.id)
+
+    # Проверяем, пришёл ли по рефералке
+    invited_by = user["invited_by"] if user else None
+    is_referral = invited_by is not None
+
+    # Блокируем только НЕ-рефералов
+    if user and user["status"] == "pending" and not is_referral:
         await callback.answer("Заявка уже отправлена", show_alert=True)
         return
 
-    xui_email = sanitize_email(callback.from_user.username, callback.from_user.id)
-
-    invited_by = user["invited_by"] if user else None
-
+    # Создаём запись в базе
     await create_user_request(
         callback.from_user.id,
         callback.from_user.username or "",
@@ -69,27 +74,71 @@ async def accept_terms(callback: CallbackQuery):
         invited_by=invited_by
     )
 
-    logger.info(f"📨 Отправляю уведомления админам: {ADMIN_IDS}")
-    for admin_id in ADMIN_IDS:
+    if is_referral:
+        # АВТООДОБРЕНИЕ для рефералов
         try:
-            await callback.bot.send_message(
-                admin_id,
-                f"🆕 Новая заявка на подписку\n\n"
-                f"Пользователь: {callback.from_user.full_name}\n"
-                f"Username: @{callback.from_user.username or 'нет'}\n"
-                f"ID: {callback.from_user.id}\n"
-                f"Email в 3x-ui: {xui_email}\n"
-                f"✅ Согласие с условиями: да",
-                reply_markup=admin_approve_keyboard(callback.from_user.id)
-            )
-            logger.info(f"✅ Уведомление отправлено админу {admin_id}")
-        except Exception as e:
-            logger.error(f"❌ Ошибка уведомления админу {admin_id}: {e}")
+            async with XUIClient() as xui:
+                sub_id = await xui.add_client(xui_email)
+                await approve_user(callback.from_user.id, sub_id)
+                sub_url = xui.build_sub_url(sub_id)
 
-    await callback.message.edit_text(
-        "✅ Спасибо! Заявка отправлена.\n\n"
-        "Жди одобрения админа — обычно это занимает несколько минут."
-    )
+            logger.info(f"✅ Реферал {xui_email} одобрен автоматически")
+
+            await callback.message.edit_text(
+                f"🎉 <b>Твоя подписка готова!</b>\n\n"
+                f"🔗 Ссылка:\n<code>{sub_url}</code>\n\n"
+                f"📱 Лимит: 3 IP одновременно\n"
+                f"⏳ Срок: 30 дней\n\n"
+                f"📖 Как подключиться — жми «📖 Как подключиться»\n"
+                f"📷 QR-код — жми «📷 QR-код»\n\n"
+                f"{DONATE_TEXT}",
+                reply_markup=subscription_keyboard(),
+                parse_mode="HTML"
+            )
+
+            # Уведомляем админов
+            for admin_id in ADMIN_IDS:
+                try:
+                    await callback.bot.send_message(
+                        admin_id,
+                        f"🆕 <b>Новый пользователь (реферал)</b>\n\n"
+                        f"👤 {callback.from_user.full_name}\n"
+                        f"🆔 <code>{callback.from_user.id}</code>\n"
+                        f"📧 {xui_email}\n"
+                        f"👥 Пригласил: <code>{invited_by}</code>",
+                        parse_mode="HTML",
+                        disable_notification=True
+                    )
+                except Exception:
+                    pass
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка при создании реферала: {e}")
+            await callback.message.edit_text(
+                f"❌ Ошибка. Обратись в поддержку: @skrepnet_support"
+            )
+
+    else:
+        # РУЧНОЕ ОДОБРЕНИЕ для остальных
+        for admin_id in ADMIN_IDS:
+            try:
+                await callback.bot.send_message(
+                    admin_id,
+                    f"🆕 <b>Новая заявка</b>\n\n"
+                    f"👤 {callback.from_user.full_name}\n"
+                    f"🆔 <code>{callback.from_user.id}</code>\n"
+                    f"📧 {xui_email}",
+                    reply_markup=admin_approve_keyboard(callback.from_user.id),
+                    parse_mode="HTML"
+                )
+            except Exception as e:
+                logger.error(f"❌ Ошибка уведомления админу {admin_id}: {e}")
+
+        await callback.message.edit_text(
+            "✅ Спасибо! Заявка отправлена.\n\n"
+            "Жди одобрения админа — обычно это занимает несколько минут."
+        )
+
     await callback.answer()
 
 
