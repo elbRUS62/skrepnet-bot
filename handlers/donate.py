@@ -69,23 +69,33 @@ async def process_successful_payment(message: Message):
     payment = message.successful_payment
     amount = payment.total_amount
 
+    logger.info(f"⭐ Донат звёздами: {message.from_user.id} - {amount} ⭐")
+
+    # Уведомление админам
+    admin_text = (
+        f"⭐ <b>Новый донат звёздами!</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"👤 <b>От:</b> {message.from_user.full_name}\n"
+        f"🆔 <b>ID:</b> <code>{message.from_user.id}</code>\n"
+        f"💵 <b>Сумма:</b> <code>{amount} ⭐</code>\n"
+    )
+
     for admin_id in ADMIN_IDS:
         try:
             await message.bot.send_message(
                 admin_id,
-                f"⭐ <b>Новый донат звёздами!</b>\n\n"
-                f"От: {message.from_user.full_name}\n"
-                f"ID: {message.from_user.id}\n"
-                f"Сумма: {amount} ⭐",
+                admin_text,
                 parse_mode="HTML",
                 disable_notification=True
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Ошибка отправки админу {admin_id}: {e}")
 
+    # Благодарность пользователю
     await message.answer(
         f"⭐ <b>Спасибо за поддержку!</b>\n\n"
-        f"Ты отправил {amount} звёзд. Это помогает серверу работать.\n\n"
+        f"Ты отправил <code>{amount} ⭐</code>.\n"
+        f"Это помогает серверу работать.\n\n"
         f"❤️ Ты лучший!",
         parse_mode="HTML"
     )
