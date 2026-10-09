@@ -5,7 +5,7 @@ import string
 from datetime import datetime, timedelta
 from config import (
     XUI_HOST, XUI_BASE_PATH, XUI_API_TOKEN,
-    INBOUND_GB, INBOUND_LV, LIMIT_IP, SUBSCRIPTION_DAYS,
+    INBOUND_GB, LIMIT_IP, SUBSCRIPTION_DAYS,
     SUB_BASE_URL, SUB_PATH
 )
 
@@ -57,7 +57,7 @@ class XUIClient:
                 "tgId": 0,
                 "subId": sub_id
             },
-            "inboundIds": [INBOUND_GB, INBOUND_LV]
+            "inboundIds": [INBOUND_GB]
         }
         result = await self._post("/panel/api/clients/add", payload)
         if not result.get("success"):
