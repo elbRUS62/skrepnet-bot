@@ -115,19 +115,24 @@ class DonationAlertsCentrifugo:
 
             async for message in ws:
                 try:
-                    data = json.loads(message)
+                    # Centrifugo может присылать несколько JSON через \n
+                    for line in message.strip().split("\n"):
+                        if not line.strip():
+                            continue
 
-                    result = data.get("result", {})
-                    channel = result.get("channel", "")
-                    if not channel.startswith("$alerts:donation_"):
-                        continue
+                        data = json.loads(line)
 
-                    inner_data = result.get("data", {})
-                    if "data" not in inner_data:
-                        continue
+                        result = data.get("result", {})
+                        channel = result.get("channel", "")
+                        if not channel.startswith("$alerts:donation_"):
+                            continue
 
-                    donation = inner_data["data"]
-                    await self._handle_donation(donation)
+                        inner_data = result.get("data", {})
+                        if "data" not in inner_data:
+                            continue
+
+                        donation = inner_data["data"]
+                        await self._handle_donation(donation)
 
                 except Exception as e:
                     logger.error(f"Ошибка обработки сообщения: {e}")
