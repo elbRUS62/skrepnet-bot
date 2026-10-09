@@ -34,7 +34,7 @@ async def cmd_start_ref(message: Message, command: CommandObject):
             message.from_user.id,
             message.from_user.username or "",
             message.from_user.first_name or "",
-            sanitize_email(message.from_user.username or message.from_user.first_name or f"user{message.from_user.id}"),
+            sanitize_email(message.from_user.username, message.from_user.id),
             invited_by=invited_by
         )
         await increment_invites(invited_by)

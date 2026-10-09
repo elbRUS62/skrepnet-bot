@@ -57,8 +57,7 @@ async def accept_terms(callback: CallbackQuery):
         await callback.answer("Заявка уже отправлена", show_alert=True)
         return
 
-    name = callback.from_user.username or callback.from_user.first_name or f"user{callback.from_user.id}"
-    xui_email = sanitize_email(name)
+    xui_email = sanitize_email(callback.from_user.username, callback.from_user.id)
 
     invited_by = user["invited_by"] if user else None
 
