@@ -16,7 +16,6 @@ XUI_BASE_PATH = os.getenv("XUI_BASE_PATH")
 
 # Inbounds
 INBOUND_GB = int(os.getenv("XUI_INBOUND_GB", "5"))
-INBOUND_LV = int(os.getenv("XUI_INBOUND_LV", "6"))
 
 # Subscription
 SUB_BASE_URL = os.getenv("SUB_BASE_URL")

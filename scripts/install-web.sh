@@ -81,6 +81,15 @@ else
 
         info "Получаю сертификат для $WEB_DOMAIN (standalone, порт 80)..."
         systemctl stop nginx 2>/dev/null || true
+        
+        if command -v ss > /dev/null 2>&1; then
+            if ss -tlnp 2>/dev/null | grep -q ':80 '; then
+                warning "Порт 80 занят — certbot --standalone может упасть"
+                warning "Освободи порт 80 или используй DNS-валидацию"
+                read -p "  Продолжить? (y/N): " cont80
+                [ "$cont80" != "y" ] && exit 1
+            fi
+        fi
 
         certbot certonly --standalone \
             -d "$WEB_DOMAIN" \

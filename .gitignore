@@ -16,3 +16,8 @@ backups/
 
 # Системные
 .DS_Store
+
+# Логи
+*.log
+*.pyo
+venv-web/
