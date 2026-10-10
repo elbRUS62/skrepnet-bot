@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 🆘 Поддержка в Telegram
+    url: https://t.me/SkrepNet_support
+    about: Не хочешь публиковать issue? Напиши в поддержку
