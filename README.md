@@ -12,9 +12,10 @@
 - 🤖 **Бот в Telegram:** [@skrepnet_bot](https://t.me/skrepnet_bot)
 - 🆘 **Поддержка:** [@SkrepNet_support](https://t.me/SkrepNet_support)
 
-</div>
 
----
+<img width="400" alt="SkrepNet banner" src="https://github.com/user-attachments/assets/27dd6763-7b5e-4222-aa1f-d22a91094bee" />
+
+</div>
 
 ## ✨ Возможности
 
