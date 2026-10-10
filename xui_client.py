@@ -47,7 +47,7 @@ class XUIClient:
         expires_ms = int((datetime.now() + timedelta(days=days)).timestamp() * 1000)
 
         # Генерируем subId из email — гарантированно уникальный
-        sub_id = hashlib.md5(email.encode()).hexdigest()[:16]
+        sub_id = hashlib.sha256(email.encode()).hexdigest()[:16]
 
         payload = {
             "client": {
