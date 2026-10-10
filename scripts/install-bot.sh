@@ -21,7 +21,6 @@ error()   { echo -e "${RED}  ❌ $1${NC}"; }
 warning() { echo -e "${YELLOW}  ⚠️  $1${NC}"; }
 info()    { echo -e "${CYAN}  ➜  $1${NC}"; }
 
-clear
 echo ""
 echo -e "${BOLD}${BLUE}"
 echo "        🛡️  SkrepNet Bot — Bot Installer"
