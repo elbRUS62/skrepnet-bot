@@ -9,9 +9,8 @@
 [![3x-ui](https://img.shields.io/badge/3x--ui-API-green)](https://github.com/MHSanaei/3x-ui)
 [![Stars](https://img.shields.io/badge/⭐_Telegram_Stars-поддержка-yellow)]()
 
-- 🤖 **Бот в Telegram:** [@skrepnet_bot](https://t.me/skrepnet_bot)
-- 🆘 **Поддержка:** [@SkrepNet_support](https://t.me/SkrepNet_support)
-
+ 🤖 **Бот в Telegram:** [@skrepnet_bot](https://t.me/skrepnet_bot)
+ 🆘 **Поддержка:** [@SkrepNet_support](https://t.me/SkrepNet_support)
 
 <img width="400" alt="SkrepNet banner" src="https://github.com/user-attachments/assets/27dd6763-7b5e-4222-aa1f-d22a91094bee" />
 
