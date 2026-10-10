@@ -84,6 +84,7 @@ read -p "  XUI_API_TOKEN (из Settings → Security): " XUI_API_TOKEN
 header "Проверка 3x-ui"
 info "Проверяю доступность API..."
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+    --connect-timeout 5 --max-time 10 \
     -H "Authorization: Bearer $XUI_API_TOKEN" \
     "${XUI_HOST}${XUI_BASE_PATH}/panel/api/inbounds/list" || echo "000")
 
