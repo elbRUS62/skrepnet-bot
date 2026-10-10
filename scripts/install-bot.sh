@@ -159,18 +159,36 @@ success ".env создан (права 600)"
 warning "Не забудь вписать DONATION_ALERTS_TOKEN в .env (сейчас пустой)"
 
 header "Устанавливаю зависимости"
+
 if [ ! -d "venv" ]; then
+    info "Создаю виртуальное окружение (venv)..."
     python3 -m venv venv
+    success "venv создан"
+else
+    info "venv уже существует — использую его"
 fi
+
 source venv/bin/activate
-pip install --upgrade pip -q
-pip install -r requirements.txt -q
+info "Обновляю pip (это может занять 10-20 секунд)..."
+pip install --upgrade pip 2>&1 | tail -3
+
+info "Устанавливаю зависимости из requirements.txt..."
+info "Это займёт 30-60 секунд. Прогресс показывается ниже."
+echo ""
+
+if pip install -r requirements.txt; then
+    success "Основные зависимости установлены"
+else
+    error "Ошибка установки зависимостей"
+    exit 1
+fi
 
 if ! pip show qrcode &> /dev/null; then
-    pip install "qrcode[pil]" -q
+    info "Доустанавливаю qrcode[pil]..."
+    pip install "qrcode[pil]" 2>&1 | tail -3
 fi
 
-success "Зависимости установлены"
+success "Все зависимости установлены"
 
 header "Настраиваю бэкапы"
 mkdir -p backups
@@ -213,29 +231,18 @@ success "Сервис skrepnet-bot настроен и запущен"
 
 echo ""
 line
-echo -e "${BOLD}${GREEN}"
-echo "        ✅ Установка бота завершена!"
-echo -e "${NC}"
+echo -e "${BOLD}${GREEN}  ✅ Установка бота завершена!${NC}"
 line
 echo ""
-echo -e "${BOLD}  📋 Полезные команды:${NC}"
+echo -e "${BOLD}  📋 Команды:${NC}"
 echo ""
-echo -e "  ${CYAN}Статус бота:${NC}"
-echo "    systemctl status skrepnet-bot"
+echo -e "    ${CYAN}systemctl status skrepnet-bot${NC}      — статус"
+echo -e "    ${CYAN}journalctl -u skrepnet-bot -f${NC}      — логи"
+echo -e "    ${CYAN}systemctl restart skrepnet-bot${NC}     — перезапуск"
+echo -e "    ${CYAN}ls -la $(pwd)/backups/${NC}             — бэкапы"
+echo -e "    ${CYAN}cd $(pwd)${NC}                          — папка бота"
 echo ""
-echo -e "  ${CYAN}Логи в реальном времени:${NC}"
-echo "    journalctl -u skrepnet-bot -f"
-echo ""
-echo -e "  ${CYAN}Перезапуск:${NC}"
-echo "    systemctl restart skrepnet-bot"
-echo ""
-echo -e "  ${CYAN}Бэкапы:${NC}"
-echo "    ls -la $(pwd)/backups/"
-echo ""
-echo -e "  ${CYAN}Папка бота:${NC}"
-echo "    cd $(pwd)"
-echo ""
-warning "Не забудь вписать DONATION_ALERTS_TOKEN в .env и перезапустить бота"
+warning "Впиши DONATION_ALERTS_TOKEN в .env и перезапусти бота"
 echo ""
 line
 echo -e "${BOLD}  🛡️  SkrepNet Bot · @elbRUS62${NC}"

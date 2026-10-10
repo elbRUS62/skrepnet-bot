@@ -141,28 +141,21 @@ success "Сервис skrepnet-web настроен и запущен"
 
 echo ""
 line
-echo -e "${BOLD}${GREEN}"
-echo "        ✅ Установка веб-сайта завершена!"
-echo -e "${NC}"
+echo -e "${BOLD}${GREEN}  ✅ Установка веб-сайта завершена!${NC}"
 line
 echo ""
-echo -e "${BOLD}  🌐 Адрес сайта:${NC}"
+
 if [ -f "$SSL_CERT" ]; then
-    echo "    https://${WEB_DOMAIN}:${WEB_PORT}/invite/<token>"
+    echo -e "${BOLD}  🌐 Сайт:${NC} ${CYAN}https://${WEB_DOMAIN}:${WEB_PORT}/invite/<token>${NC}"
 else
-    echo "    http://${WEB_DOMAIN}:${WEB_PORT}/invite/<token>"
+    echo -e "${BOLD}  🌐 Сайт:${NC} ${CYAN}http://${WEB_DOMAIN}:${WEB_PORT}/invite/<token>${NC}"
 fi
 echo ""
-echo -e "${BOLD}  📋 Полезные команды:${NC}"
+echo -e "${BOLD}  📋 Команды:${NC}"
 echo ""
-echo -e "  ${CYAN}Статус сайта:${NC}"
-echo "    systemctl status skrepnet-web"
-echo ""
-echo -e "  ${CYAN}Логи:${NC}"
-echo "    journalctl -u skrepnet-web -f"
-echo ""
-echo -e "  ${CYAN}Перезапуск:${NC}"
-echo "    systemctl restart skrepnet-web"
+echo -e "    ${CYAN}systemctl status skrepnet-web${NC}      — статус"
+echo -e "    ${CYAN}journalctl -u skrepnet-web -f${NC}      — логи"
+echo -e "    ${CYAN}systemctl restart skrepnet-web${NC}     — перезапуск"
 echo ""
 line
 echo -e "${BOLD}  🛡️  SkrepNet Bot · @elbRUS62${NC}"
