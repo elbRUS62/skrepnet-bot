@@ -15,8 +15,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-line()    { echo -e "${CYAN}════════════════════════════════════════════════════════${NC}"; }
-header()  { echo ""; line; echo -e "${BOLD}${BLUE}  $1${NC}"; line; }
+header()  { echo ""; echo -e "${BOLD}${BLUE}  $1${NC}"; }
 success() { echo -e "${GREEN}  ✅ $1${NC}"; }
 error()   { echo -e "${RED}  ❌ $1${NC}"; }
 warning() { echo -e "${YELLOW}  ⚠️  $1${NC}"; }
@@ -24,13 +23,11 @@ info()    { echo -e "${CYAN}  ➜  $1${NC}"; }
 
 clear
 echo ""
-line
 echo -e "${BOLD}${BLUE}"
 echo "        🛡️  SkrepNet Bot — Bot Installer"
 echo "        Автор: @elbRUS62"
 echo "        GitHub: github.com/elbRUS62/skrepnet-bot"
 echo -e "${NC}"
-line
 echo ""
 
 if [ "$EUID" -ne 0 ]; then
@@ -230,9 +227,7 @@ systemctl restart skrepnet-bot
 success "Сервис skrepnet-bot настроен и запущен"
 
 echo ""
-line
 echo -e "${BOLD}${GREEN}  ✅ Установка бота завершена!${NC}"
-line
 echo ""
 echo -e "${BOLD}  📋 Команды:${NC}"
 echo ""
@@ -244,7 +239,5 @@ echo -e "    ${CYAN}cd $(pwd)${NC}                          — папка бо�
 echo ""
 warning "Впиши DONATION_ALERTS_TOKEN в .env и перезапусти бота"
 echo ""
-line
 echo -e "${BOLD}  🛡️  SkrepNet Bot · @elbRUS62${NC}"
-line
 echo ""

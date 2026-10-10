@@ -15,8 +15,7 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-line()    { echo -e "${CYAN}════════════════════════════════════════════════════════${NC}"; }
-header()  { echo ""; line; echo -e "${BOLD}${BLUE}  $1${NC}"; line; }
+header()  { echo ""; echo -e "${BOLD}${BLUE}  $1${NC}"; }
 success() { echo -e "${GREEN}  ✅ $1${NC}"; }
 error()   { echo -e "${RED}  ❌ $1${NC}"; }
 warning() { echo -e "${YELLOW}  ⚠️  $1${NC}"; }
@@ -24,13 +23,11 @@ info()    { echo -e "${CYAN}  ➜  $1${NC}"; }
 
 clear
 echo ""
-line
 echo -e "${BOLD}${BLUE}"
 echo "        🛡️  SkrepNet Bot — Web Installer"
 echo "        Автор: @elbRUS62"
 echo "        GitHub: github.com/elbRUS62/skrepnet-bot"
 echo -e "${NC}"
-line
 echo ""
 
 if [ "$EUID" -ne 0 ]; then
@@ -140,9 +137,7 @@ systemctl restart skrepnet-web
 success "Сервис skrepnet-web настроен и запущен"
 
 echo ""
-line
 echo -e "${BOLD}${GREEN}  ✅ Установка веб-сайта завершена!${NC}"
-line
 echo ""
 
 if [ -f "$SSL_CERT" ]; then
@@ -157,7 +152,5 @@ echo -e "    ${CYAN}systemctl status skrepnet-web${NC}      — статус"
 echo -e "    ${CYAN}journalctl -u skrepnet-web -f${NC}      — логи"
 echo -e "    ${CYAN}systemctl restart skrepnet-web${NC}     — перезапуск"
 echo ""
-line
 echo -e "${BOLD}  🛡️  SkrepNet Bot · @elbRUS62${NC}"
-line
 echo ""
