@@ -79,24 +79,31 @@
 
 ## 🚀 Быстрая установка
 
-```
     git clone https://github.com/elbRUS62/skrepnet-bot.git
     cd skrepnet-bot
-    ./install.sh
-```
-Скрипт задаст все вопросы (BOT_TOKEN, ADMIN_ID, XUI_HOST, XUI_API_TOKEN, инбаунды, SUB_BASE_URL, лимиты, донат) и настроит бота автоматически: создаст `.env` с правами 600, поставит зависимости в venv, настроит cron для бэкапов и systemd-сервис.
+
+    # Установка бота
+    bash scripts/install-bot.sh
+
+    # Установка веб-сайта (опционально)
+    bash scripts/install-web.sh
+
+Скрипт задаст все вопросы (BOT_TOKEN, ADMIN_ID, XUI_HOST, XUI_API_TOKEN, инбаунд, SUB_BASE_URL, лимиты, донат) и настроит бота автоматически: создаст `.env` с правами 600, поставит зависимости в venv, настроит cron для бэкапов и systemd-сервис.
+
+Для веб-сайта: `scripts/install-web.sh` настроит Flask-сервис, проверит SSL, при необходимости получит сертификат через certbot и создаст отдельный `skrepnet-web.service`.
 
 ### Полезные команды
-```
+
     systemctl status skrepnet-bot      # статус
     journalctl -u skrepnet-bot -f      # логи в реальном времени
     systemctl restart skrepnet-bot     # перезапуск
     ls -la backups/                    # бэкапы
-```
+
+
 ---
 
 ## 📁 Структура проекта
-```
+
     bot.py                  # точка входа
     config.py               # чтение .env, валидация
     database.py             # SQLite (users, admins, invite_links, invites)
@@ -106,11 +113,12 @@
     docs_config.py          # ссылки на документы в telegra.ph
     donation_socket.py      # DonationAlerts через Centrifugo WebSocket
     web_app.py              # Flask-сайт для выдачи без Telegram
-    install.sh              # установщик
     backup.sh               # бэкап базы
     handlers/               # обработчики по модулям
+    scripts/                # install-bot.sh, install-web.sh
     web/                    # templates + static
-```
+
+
 ---
 
 ## 🔄 Как работает выдача подписки
