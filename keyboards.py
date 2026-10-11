@@ -192,3 +192,39 @@ def invite_share_keyboard(invite_url: str):
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📤 Поделиться ссылкой", url=share_url)]
     ])
+
+
+def email_conflict_keyboard(telegram_id: int, base_email: str):
+    """Клавиатура для выбора нового email при конфликте."""
+    suggested = [
+        f"{base_email}_2",
+        f"{base_email}_3",
+        f"{base_email}_4",
+    ]
+    id_email = f"{base_email}_{telegram_id}"
+
+    buttons = []
+    # Использовать существующего клиента с тем же email
+    buttons.append([InlineKeyboardButton(
+        text=f"♻️ Использовать существующий {base_email}",
+        callback_data=f"use_existing:{telegram_id}"
+    )])
+    # Суффиксы
+    for email in suggested:
+        buttons.append([InlineKeyboardButton(
+            text=f"📧 {email}",
+            callback_data=f"retry_email:{telegram_id}:{email}"
+        )])
+    buttons.append([InlineKeyboardButton(
+        text=f"🆔 {id_email}",
+        callback_data=f"retry_email:{telegram_id}:{id_email}"
+    )])
+    buttons.append([InlineKeyboardButton(
+        text="✍️ Ввести вручную",
+        callback_data=f"manual_email:{telegram_id}"
+    )])
+    buttons.append([InlineKeyboardButton(
+        text="❌ Отменить заявку",
+        callback_data=f"cancel_email:{telegram_id}"
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)

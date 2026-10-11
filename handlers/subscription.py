@@ -1,4 +1,5 @@
 import logging
+import re
 from datetime import datetime
 
 import aiosqlite
@@ -14,10 +15,10 @@ from xui_client import XUIClient
 from keyboards import (
     admin_approve_keyboard, subscription_keyboard, donate_keyboard,
     documents_keyboard, terms_keyboard, back_to_documents_keyboard,
-    main_menu, admin_menu
+    main_menu, admin_menu, email_conflict_keyboard,
 )
 from .utils import sanitize_email, make_qr_image
-from .states import RegStates
+from .states import RegStates, AdminStates
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -217,9 +218,24 @@ async def approve_callback(callback: CallbackQuery):
         )
 
     except Exception as e:
-        logger.error(f"❌ Ошибка при одобрении {user['xui_email']}: {e}")
-        await callback.message.edit_text(f"❌ Ошибка: {e}")
-        await callback.answer("Ошибка при создании клиента", show_alert=True)
+        error_msg = str(e)
+        if "email already in use" in error_msg:
+            # Email занят — предлагаем админу выбрать новое имя
+            base_email = user["xui_email"]
+
+            await callback.message.edit_text(
+                f"⚠️ <b>Email '{base_email}' уже занят в 3x-ui</b>\n\n"
+                f"👤 Пользователь: {user['first_name']}\n"
+                f"🆔 <code>{telegram_id}</code>\n\n"
+                f"Выбери новое имя для клиента:",
+                parse_mode="HTML",
+                reply_markup=email_conflict_keyboard(telegram_id, base_email)
+            )
+            logger.warning(f"⚠️ Конфликт email {base_email}, ждём выбор админа")
+        else:
+            logger.error(f"❌ Ошибка при одобрении {user['xui_email']}: {e}")
+            await callback.message.edit_text(f"❌ Ошибка: {e}")
+            await callback.answer("Ошибка при создании клиента", show_alert=True)
 
 
 @router.callback_query(F.data.startswith("reject:"))
@@ -355,4 +371,234 @@ async def back_to_main(callback: CallbackQuery):
         "🏠 Главное меню",
         reply_markup=menu
     )
+    await callback.answer()
+
+# ============================================================
+# ОБРАБОТКА КОНФЛИКТА EMAIL (email already in use)
+# ============================================================
+
+@router.callback_query(F.data.startswith("retry_email:"))
+async def retry_email_callback(callback: CallbackQuery):
+    """Админ выбрал новое имя для клиента."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    _, telegram_id_str, new_email = callback.data.split(":", 2)
+    telegram_id = int(telegram_id_str)
+
+    user = await get_user(telegram_id)
+    if not user:
+        await callback.answer("Пользователь не найден", show_alert=True)
+        return
+
+    if user["status"] == "active":
+        await callback.answer("⚠️ Заявка уже одобрена", show_alert=True)
+        return
+
+    try:
+        async with XUIClient() as xui:
+            sub_id = await xui.add_client(new_email)
+            await approve_user(telegram_id, sub_id)
+            sub_url = xui.build_sub_url(sub_id)
+
+        # Обновляем email в БД
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "UPDATE users SET xui_email = ? WHERE telegram_id = ?",
+                (new_email, telegram_id)
+            )
+            await db.commit()
+
+        await callback.message.edit_text(
+            f"✅ <b>Заявка одобрена</b>\n\n"
+            f"👤 {user['first_name']}\n"
+            f"📧 {new_email}\n"
+            f"🔗 subId: <code>{sub_id}</code>",
+            parse_mode="HTML"
+        )
+
+        await callback.bot.send_message(
+            telegram_id,
+            f"🎉 <b>Твоя подписка готова!</b>\n\n"
+            f"🔗 Ссылка:\n<code>{sub_url}</code>\n\n"
+            f"📱 Лимит: 3 IP одновременно\n"
+            f"⏳ Срок: 30 дней. Продлить можно через «🔑 Моя подписка».\n\n"
+            f"{DONATE_TEXT}",
+            parse_mode="HTML",
+            reply_markup=subscription_keyboard()
+        )
+
+        logger.info(f"✅ Клиент {new_email} создан (subId={sub_id})")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при создании {new_email}: {e}")
+        await callback.answer(f"Ошибка: {e}", show_alert=True)
+
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("manual_email:"))
+async def manual_email_start(callback: CallbackQuery, state: FSMContext):
+    """Админ хочет ввести email вручную."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    telegram_id = int(callback.data.split(":")[1])
+
+    await state.update_data(conflict_tg_id=telegram_id)
+    await callback.message.edit_text(
+        f"✍️ <b>Введи новый email для клиента</b>\n\n"
+        f"🆔 Telegram ID: <code>{telegram_id}</code>\n\n"
+        f"Только латиница, цифры, <code>_</code> и <code>-</code>.\n"
+        f"Например: <code>Ilya_new</code>",
+        parse_mode="HTML"
+    )
+    await state.set_state(AdminStates.waiting_custom_email)
+    await callback.answer()
+
+
+@router.message(AdminStates.waiting_custom_email)
+async def manual_email_process(message: Message, state: FSMContext):
+    """Обработка введённого вручную email."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    data = await state.get_data()
+    telegram_id = data.get("conflict_tg_id")
+
+    if not telegram_id:
+        await message.answer("❌ Ошибка: не найден Telegram ID")
+        await state.clear()
+        return
+
+    new_email = message.text.strip()
+
+    # Валидация
+    if not re.match(r'^[a-zA-Z0-9_\-]{1,64}$', new_email):
+        await message.answer(
+            "❌ Неверный формат. Только латиница, цифры, <code>_</code> и <code>-</code>.\n\n"
+            "Попробуй ещё раз или отправь /cancel.",
+            parse_mode="HTML"
+        )
+        return
+
+    user = await get_user(telegram_id)
+    if not user:
+        await message.answer(f"❌ Пользователь {telegram_id} не найден")
+        await state.clear()
+        return
+
+    try:
+        async with XUIClient() as xui:
+            sub_id = await xui.add_client(new_email)
+            await approve_user(telegram_id, sub_id)
+            sub_url = xui.build_sub_url(sub_id)
+
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "UPDATE users SET xui_email = ? WHERE telegram_id = ?",
+                (new_email, telegram_id)
+            )
+            await db.commit()
+
+        await message.answer(
+            f"✅ <b>Клиент создан</b>\n\n"
+            f"📧 {new_email}\n"
+            f"🔗 subId: <code>{sub_id}</code>",
+            parse_mode="HTML"
+        )
+
+        await message.bot.send_message(
+            telegram_id,
+            f"🎉 <b>Твоя подписка готова!</b>\n\n"
+            f"🔗 Ссылка:\n<code>{sub_url}</code>\n\n"
+            f"📱 Лимит: 3 IP\n"
+            f"⏳ Срок: 30 дней\n\n"
+            f"{DONATE_TEXT}",
+            parse_mode="HTML",
+            reply_markup=subscription_keyboard()
+        )
+
+        logger.info(f"✅ Клиент {new_email} создан вручную (subId={sub_id})")
+
+    except Exception as e:
+        await message.answer(f"❌ Ошибка: {e}")
+
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("cancel_email:"))
+async def cancel_email_callback(callback: CallbackQuery):
+    """Отмена заявки из-за конфликта email."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    telegram_id = int(callback.data.split(":")[1])
+
+    await callback.message.edit_text(
+        f"❌ Заявка пользователя <code>{telegram_id}</code> отклонена (email занят).",
+        parse_mode="HTML"
+    )
+    await callback.answer("Отклонено")
+
+
+@router.callback_query(F.data.startswith("use_existing:"))
+async def use_existing_email_callback(callback: CallbackQuery):
+    """Админ решил использовать существующего клиента с тем же email."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    telegram_id = int(callback.data.split(":")[1])
+
+    user = await get_user(telegram_id)
+    if not user:
+        await callback.answer("Пользователь не найден", show_alert=True)
+        return
+
+    if user["status"] == "active":
+        await callback.answer("⚠️ Заявка уже одобрена", show_alert=True)
+        return
+
+    existing_email = user["xui_email"]
+
+    try:
+        async with XUIClient() as xui:
+            client = await xui.get_client(existing_email)
+            sub_id = client.get("subId")
+
+            if not sub_id:
+                raise Exception(f"У клиента {existing_email} нет subId — используй другое имя")
+
+            await approve_user(telegram_id, sub_id)
+            sub_url = xui.build_sub_url(sub_id)
+
+        await callback.message.edit_text(
+            f"✅ <b>Использован существующий клиент</b>\n\n"
+            f"👤 {user['first_name']}\n"
+            f"📧 {existing_email}\n"
+            f"🔗 subId: <code>{sub_id}</code>",
+            parse_mode="HTML"
+        )
+
+        await callback.bot.send_message(
+            telegram_id,
+            f"🎉 <b>Твоя подписка готова!</b>\n\n"
+            f"🔗 Ссылка:\n<code>{sub_url}</code>\n\n"
+            f"📱 Лимит: 3 IP одновременно\n"
+            f"⏳ Срок: 30 дней. Продлить можно через «🔑 Моя подписка».\n\n"
+            f"{DONATE_TEXT}",
+            parse_mode="HTML",
+            reply_markup=subscription_keyboard()
+        )
+
+        logger.info(f"✅ Использован существующий клиент {existing_email} (subId={sub_id})")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при использовании {existing_email}: {e}")
+        await callback.answer(f"Ошибка: {e}", show_alert=True)
+
     await callback.answer()

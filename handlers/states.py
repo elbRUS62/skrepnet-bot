@@ -13,3 +13,5 @@ class AdminStates(StatesGroup):
     waiting_reset_username = State()
     waiting_broadcast_text = State()
     waiting_delete_username = State()
+    waiting_custom_email = State()
+    waiting_custom_email_tg_id = State()
