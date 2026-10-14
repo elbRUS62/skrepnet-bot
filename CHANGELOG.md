@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [1.6] — 2026-10-14
+
 ### Добавлено
 - Настраиваемое имя бота (`BOT_NAME` в `.env`) — заменяет все упоминания «SkrepNet» в текстах
 - Настраиваемый support (`SUPPORT_USERNAME` в `.env`) — заменяет `@SkrepNet_support`
