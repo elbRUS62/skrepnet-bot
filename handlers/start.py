@@ -7,7 +7,10 @@ from aiogram.types import Message
 from aiogram.filters import CommandStart, CommandObject
 
 from config import ADMIN_IDS
-from database import get_user, create_user_request, increment_invites, add_invite
+from database import (
+    get_user, create_user_request, increment_invites, add_invite,
+    is_in_waitlist, get_waitlist_position,
+)
 from keyboards import main_menu, admin_menu
 from .utils import sanitize_email
 
@@ -79,6 +82,19 @@ async def _show_start(message: Message):
     user = await get_user(message.from_user.id)
     admin = message.from_user.id in ADMIN_IDS
     menu = admin_menu() if admin else main_menu()
+
+    # Проверяем, не в листе ли ожидания
+    in_waitlist = await is_in_waitlist(message.from_user.id)
+    if in_waitlist:
+        position = await get_waitlist_position(message.from_user.id)
+        await message.answer(
+            f"⏳ <b>Ты в листе ожидания</b>\n\n"
+            f"📋 Твоя позиция: <b>{position}</b>\n\n"
+            f"Мы напишем, когда освободится место.",
+            parse_mode="HTML",
+            reply_markup=menu
+        )
+        return
 
     # Прогресс донатов
     from .progress import render_progress

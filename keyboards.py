@@ -305,3 +305,12 @@ def users_list_keyboard(users: list, action: str, page: int, total: int, per_pag
     )])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+def waitlist_keyboard():
+    """Клавиатура для листа ожидания."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="📝 Встать в лист ожидания",
+            callback_data="join_waitlist"
+        )],
+    ])

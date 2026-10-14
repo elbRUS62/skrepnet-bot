@@ -8,7 +8,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
 
-from config import ADMIN_IDS, DB_PATH, DONATE_TEXT
+from config import ADMIN_IDS, DB_PATH, DONATE_TEXT, MAX_USERS
 from database import (
     get_user, get_user_by_username, is_admin, add_admin, remove_admin,
     get_all_admins, delete_user, renew_user, approve_user,
@@ -23,6 +23,7 @@ from keyboards import (
     users_list_keyboard, admin_submenu_users,
 )
 from .states import AdminStates
+from .waitlist import notify_next_in_queue
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -55,15 +56,23 @@ async def cmd_stats(message: Message):
         ) as cur:
             expiring = (await cur.fetchone())["c"]
 
+        async with db.execute("SELECT COUNT(*) as c FROM waitlist") as cur:
+            waitlist_count = (await cur.fetchone())["c"]
+
     invites_stats = await get_global_invites_stats()
     top_inviters = await get_top_inviters(5)
 
+    free_slots = max(MAX_USERS - active, 0)
+
     text = (
         f"📊 <b>Статистика SkrepNet</b>\n\n"
-        f"👥 Всего: {total}\n"
-        f"✅ Активных: {active}\n"
-        f"⏳ Ожидают: {pending}\n"
-        f"⏰ Истекают через 3 дня: {expiring}\n\n"
+        f"👥 <b>Пользователи:</b>\n"
+        f"• Всего: {total}\n"
+        f"• Активных: {active}\n"
+        f"• Ожидают одобрения: {pending}\n"
+        f"• В листе ожидания: {waitlist_count}\n"
+        f"• Свободно мест: {free_slots} из {MAX_USERS}\n"
+        f"• Истекают через 3 дня: {expiring}\n\n"
         f"📢 <b>Приглашения:</b>\n"
         f"• По реферальным: {invites_stats['ref']}\n"
         f"• Без Telegram: {invites_stats['no_tg']}\n"
@@ -115,6 +124,21 @@ async def admin_close(callback: CallbackQuery):
     await callback.message.delete()
     await callback.answer()
 
+
+@router.callback_query(F.data == "admin_manage_back")
+async def admin_manage_back(callback: CallbackQuery):
+    """Вернуться в меню «Управление»."""
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+
+    await callback.message.edit_text(
+        "🛠 <b>Управление ботом</b>\n\nВыбери действие:",
+        reply_markup=admin_manage_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
 # ============================================================
 # РАССЫЛКА
 # ============================================================
@@ -158,6 +182,7 @@ async def admin_broadcast_process(message: Message, state: FSMContext):
     )
     await state.clear()
 
+
 # ============================================================
 # ССЫЛКА НА ПАНЕЛЬ 3x-ui
 # ============================================================
@@ -179,7 +204,7 @@ async def admin_panel_link(callback: CallbackQuery):
 
 
 # ============================================================
-# СПИСОК ЗАЯВОК (с кнопками выбора)
+# СПИСОК ЗАЯВОК
 # ============================================================
 
 @router.callback_query(F.data == "admin_list_requests")
@@ -215,140 +240,6 @@ async def _show_requests_list(callback: CallbackQuery):
 
         buttons.append([InlineKeyboardButton(
             text=label[:64],
-            callback_data=f"req_view:{req['telegram_id']}"
-        )])
-
-    buttons.append([InlineKeyboardButton(
-        text="⬅️ Назад",
-        callback_data="admin_manage_back"
-    )])
-
-    await callback.message.edit_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
-    )
-
-
-@router.callback_query(F.data.startswith("req_view:"))
-async def request_approve_callback(callback: CallbackQuery, state: FSMContext):
-    """Шаг 1: спрашиваем комментарий для 3x-ui."""
-    if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("Не твоя кнопка", show_alert=True)
-        return
-
-    telegram_id = int(callback.data.split(":")[1])
-    user = await get_user(telegram_id)
-
-    if not user:
-        await callback.answer("Пользователь не найден", show_alert=True)
-        return
-
-    if user["status"] == "active":
-        await callback.answer("⚠️ Уже активна", show_alert=True)
-        return
-
-    # Авто-часть комментария для показа в подсказке
-    auto_comment = f"TG: {telegram_id}"
-    if user["username"]:
-        auto_comment += f" @{user['username']}"
-    auto_comment += " | bot"
-
-    await state.update_data(approve_tg_id=telegram_id)
-
-    await callback.message.edit_text(
-        f"📝 <b>Комментарий для 3x-ui</b>\n\n"
-        f"👤 {user['first_name']}\n"
-        f"🆔 <code>{telegram_id}</code>\n\n"
-        f"Введи текст (например, «VIP клиент, друг Ильи»)\n"
-        f"или нажми «Пропустить» — тогда будет авто:\n"
-        f"<code>{auto_comment}</code>",
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(
-                text="⏭ Пропустить",
-                callback_data=f"req_skip_comment:{telegram_id}"
-            )]
-        ])
-    )
-    await state.set_state(AdminStates.waiting_comment)
-    await callback.answer()
-
-
-@router.callback_query(F.data.startswith("req_reject:"))
-async def request_reject_callback(callback: CallbackQuery):
-    """Отклонить заявку из карточки."""
-    if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("Не твоя кнопка", show_alert=True)
-        return
-
-    telegram_id = int(callback.data.split(":")[1])
-
-    async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute(
-            "UPDATE users SET status = 'rejected' WHERE telegram_id = ?",
-            (telegram_id,)
-        )
-        await db.commit()
-
-    await callback.answer("❌ Отклонено", show_alert=True)
-    await _show_requests_list(callback)
-
-
-@router.callback_query(F.data.startswith("req_delete:"))
-async def request_delete_callback(callback: CallbackQuery):
-    """Удалить пользователя из БД."""
-    if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("Не твоя кнопка", show_alert=True)
-        return
-
-    telegram_id = int(callback.data.split(":")[1])
-
-    await delete_user(telegram_id)
-    await callback.answer("🗑 Удалён", show_alert=True)
-    await _show_requests_list(callback)
-
-
-@router.callback_query(F.data == "admin_manage_back")
-async def admin_manage_back(callback: CallbackQuery):
-    """Вернуться в меню «Управление»."""
-    if callback.from_user.id not in ADMIN_IDS:
-        return
-
-    await callback.message.edit_text(
-        "🛠 <b>Управление ботом</b>\n\nВыбери действие:",
-        reply_markup=admin_manage_keyboard(),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-
-async def _show_requests_list(callback: CallbackQuery):
-    """Общая функция отрисовки списка заявок."""
-    requests = await get_pending_requests()
-
-    if not requests:
-        await callback.message.edit_text(
-            "📋 <b>Заявок нет</b>\n\nВсе заявки обработаны.",
-            parse_mode="HTML",
-            reply_markup=admin_manage_keyboard()
-        )
-        return
-
-    text = f"📋 <b>Заявки ({len(requests)})</b>\n\n"
-    text += "Нажми на пользователя, чтобы открыть карточку:\n"
-
-    # Кнопки — по одной на пользователя
-    buttons = []
-    for req in requests:
-        status_emoji = "⏳" if req["status"] == "pending" else "❌"
-        name = req["first_name"] or "Без имени"
-        # Обрезаем имя до 20 символов для кнопки
-        short_name = name[:20] + "…" if len(name) > 20 else name
-        label = f"{status_emoji} {short_name} — {req['telegram_id']}"
-
-        buttons.append([InlineKeyboardButton(
-            text=label[:64],  # Telegram ограничивает 64 символа
             callback_data=f"req_view:{req['telegram_id']}"
         )])
 
@@ -428,6 +319,72 @@ async def request_view_callback(callback: CallbackQuery):
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
     )
     await callback.answer()
+
+
+@router.callback_query(F.data.startswith("req_approve:"))
+async def request_approve_callback(callback: CallbackQuery, state: FSMContext):
+    """Шаг 1: спрашиваем комментарий для 3x-ui."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    telegram_id = int(callback.data.split(":")[1])
+    user = await get_user(telegram_id)
+
+    if not user:
+        await callback.answer("Пользователь не найден", show_alert=True)
+        return
+
+    if user["status"] == "active":
+        await callback.answer("⚠️ Уже активна", show_alert=True)
+        return
+
+    auto_comment = f"TG: {telegram_id}"
+    if user["username"]:
+        auto_comment += f" @{user['username']}"
+    auto_comment += " | bot"
+
+    await state.update_data(approve_tg_id=telegram_id)
+
+    await callback.message.edit_text(
+        f"📝 <b>Комментарий для 3x-ui</b>\n\n"
+        f"👤 {user['first_name']}\n"
+        f"🆔 <code>{telegram_id}</code>\n\n"
+        f"Введи текст (например, «VIP клиент, друг Ильи»)\n"
+        f"или нажми «Пропустить» — тогда будет авто:\n"
+        f"<code>{auto_comment}</code>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="⏭ Пропустить",
+                callback_data=f"req_skip_comment:{telegram_id}"
+            )]
+        ])
+    )
+    await state.set_state(AdminStates.waiting_comment)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("req_reject:"))
+async def request_reject_callback(callback: CallbackQuery):
+    """Отклонить заявку из карточки."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    telegram_id = int(callback.data.split(":")[1])
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET status = 'rejected' WHERE telegram_id = ?",
+            (telegram_id,)
+        )
+        await db.commit()
+
+    await callback.answer("❌ Отклонено", show_alert=True)
+    await _show_requests_list(callback)
+
+
 @router.callback_query(F.data.startswith("req_delete:"))
 async def request_delete_callback(callback: CallbackQuery):
     """Удалить пользователя из БД."""
@@ -440,7 +397,9 @@ async def request_delete_callback(callback: CallbackQuery):
     await delete_user(telegram_id)
     await callback.answer("🗑 Удалён", show_alert=True)
 
-    # Возвращаемся к списку
+    # Проверяем лист ожидания
+    await notify_next_in_queue(callback.bot)
+
     await _show_requests_list(callback)
 
 
@@ -500,8 +459,6 @@ async def _show_users_list(callback: CallbackQuery, action: str, page: int):
     total = await count_users_by_statuses(statuses)
     users = await get_users_paginated(statuses, offset=0, limit=10000)
 
-    # Сортировка: сначала кириллица (А→Я), потом латиница (A→Z)
-    # Ключ сортировки — username (если есть), иначе first_name, иначе telegram_id
     def get_sort_name(u):
         if u["username"]:
             return u["username"].lower()
@@ -522,7 +479,6 @@ async def _show_users_list(callback: CallbackQuery, action: str, page: int):
 
     users = sorted(users, key=sort_key)
 
-    # Пагинация вручную
     start = page * PER_PAGE
     end = start + PER_PAGE
     users = users[start:end]
@@ -604,6 +560,9 @@ async def user_action_callback(callback: CallbackQuery, state: FSMContext):
             logger.error(f"Ошибка удаления из 3x-ui: {e}")
 
         await delete_user(telegram_id)
+
+        # Проверяем лист ожидания
+        await notify_next_in_queue(callback.bot)
 
         await callback.message.edit_text(
             f"🗑 <b>Пользователь удалён</b>\n\n"
@@ -695,7 +654,7 @@ async def admin_extend_days_process(message: Message, state: FSMContext):
         await message.answer(f"❌ Ошибка: {e}", reply_markup=admin_menu())
 
     await state.clear()
-    
+
 
 # ============================================================
 # ПОДМЕНЮ «ПОЛЬЗОВАТЕЛИ»
@@ -718,22 +677,16 @@ async def admin_menu_users_callback(callback: CallbackQuery):
 # ============================================================
 
 async def _do_approve(bot, chat_id: int, telegram_id: int, custom_comment: str = None):
-    """Создать клиента в 3x-ui с комментарием.
-
-    Args:
-        custom_comment: текст от админа или None (тогда авто)
-    """
+    """Создать клиента в 3x-ui с комментарием."""
     user = await get_user(telegram_id)
     if not user:
         await bot.send_message(chat_id, f"❌ Пользователь {telegram_id} не найден")
         return
 
-    # Авто-часть
     auto_comment = f"TG: {telegram_id}"
     if user["username"]:
         auto_comment += f" @{user['username']}"
 
-    # Итоговый comment
     if custom_comment:
         comment = f"{custom_comment} | {auto_comment}"
     else:
@@ -787,7 +740,7 @@ async def _do_approve(bot, chat_id: int, telegram_id: int, custom_comment: str =
         logger.info(f"✅ Одобрен {user['xui_email']} | comment={comment}")
 
     except Exception as e:
-        logger.error(f"❌ Ошибка при одобрении {user.get('xui_email')}: {e}")
+        logger.error(f"❌ Ошибка при одобрении {user['xui_email']}: {e}")
         await bot.send_message(chat_id, f"❌ Ошибка: {e}")
 
 
@@ -807,7 +760,6 @@ async def comment_input_process(message: Message, state: FSMContext):
 
     custom_comment = message.text.strip()
     if not custom_comment:
-        # Пустая строка — считаем как «Пропустить»
         custom_comment = None
 
     await _do_approve(message.bot, message.chat.id, telegram_id, custom_comment)

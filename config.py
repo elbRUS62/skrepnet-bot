@@ -30,6 +30,9 @@ DONATE_URL = os.getenv("DONATE_URL")
 DONATE_TEXT = os.getenv("DONATE_TEXT")
 SERVER_COST = int(os.getenv("SERVER_COST", "3000"))
 
+# Limits
+MAX_USERS = int(os.getenv("MAX_USERS", "100"))
+
 # Database
 DB_PATH = os.getenv("DB_PATH", "skrepnet.db")
 

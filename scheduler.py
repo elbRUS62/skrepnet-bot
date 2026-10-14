@@ -1,6 +1,5 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
-from handlers.progress import render_progress
 
 from database import (
     get_expiring_users, get_expired_today, mark_notified,
@@ -9,6 +8,8 @@ from database import (
 from keyboards import renew_keyboard
 from xui_client import XUIClient
 from config import DONATE_TEXT, ADMIN_ID
+from handlers.progress import render_progress
+from handlers.waitlist import notify_next_in_queue, cleanup_waitlist
 
 scheduler = AsyncIOScheduler()
 
@@ -32,6 +33,16 @@ def setup_scheduler(bot: Bot):
         minute=0,
         args=[bot],
         id="cleanup_inactive_users"
+    )
+
+    # Очистка листа ожидания — 1-го числа каждого месяца в 3:30
+    scheduler.add_job(
+        cleanup_waitlist,
+        "cron",
+        day=1,
+        hour=3,
+        minute=30,
+        id="cleanup_waitlist"
     )
 
     scheduler.start()
@@ -91,7 +102,6 @@ async def cleanup_inactive_users(bot: Bot):
     deleted = 0
     for user in users:
         try:
-            # Удаляем клиента из 3x-ui
             async with XUIClient() as xui:
                 try:
                     await xui._post(f"/panel/api/clients/del/{user['xui_email']}")
@@ -113,3 +123,6 @@ async def cleanup_inactive_users(bot: Bot):
             )
         except Exception:
             pass
+
+        # Уведомляем следующего из листа ожидания
+        await notify_next_in_queue(bot)

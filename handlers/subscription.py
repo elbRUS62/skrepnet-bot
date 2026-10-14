@@ -7,15 +7,17 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
-from config import ADMIN_IDS, DONATE_TEXT, DB_PATH, SUB_BASE_URL, SUB_PATH
+from config import ADMIN_IDS, DONATE_TEXT, DB_PATH, SUB_BASE_URL, SUB_PATH, MAX_USERS
 from database import (
-    get_user, create_user_request, approve_user, renew_user
+    get_user, create_user_request, approve_user, renew_user,
+    add_to_waitlist, is_in_waitlist, get_waitlist_position,
+    count_active_users, is_limit_reached,
 )
 from xui_client import XUIClient
 from keyboards import (
     admin_approve_keyboard, subscription_keyboard, donate_keyboard,
     documents_keyboard, terms_keyboard, back_to_documents_keyboard,
-    main_menu, admin_menu, email_conflict_keyboard,
+    main_menu, admin_menu, email_conflict_keyboard, waitlist_keyboard,
 )
 from .utils import sanitize_email, make_qr_image
 from .states import RegStates, AdminStates
@@ -38,6 +40,31 @@ async def request_subscription(message: Message, state: FSMContext):
 
     if user and user["status"] == "pending":
         await message.answer("⏳ Заявка уже отправлена. Жди одобрения админа.")
+        return
+
+    # Проверяем лимит пользователей
+    if await is_limit_reached(MAX_USERS):
+        # Уже в листе ожидания?
+        if await is_in_waitlist(message.from_user.id):
+            position = await get_waitlist_position(message.from_user.id)
+            await message.answer(
+                f"⏳ <b>Ты в листе ожидания</b>\n\n"
+                f"📋 Твоя позиция: <b>{position}</b>\n\n"
+                f"Мы напишем, когда освободится место.",
+                parse_mode="HTML"
+            )
+            return
+
+        # Не в листе — предлагаем встать
+        active = await count_active_users()
+        await message.answer(
+            f"⚠️ <b>Свободных мест нет</b>\n\n"
+            f"📊 Занято: {active} из {MAX_USERS}\n\n"
+            f"Ты можешь встать в лист ожидания — мы напишем тебе, "
+            f"как только освободится место.",
+            parse_mode="HTML",
+            reply_markup=waitlist_keyboard()
+        )
         return
 
     await message.answer(
@@ -684,3 +711,49 @@ async def approve_skip_comment_callback(callback: CallbackQuery, state: FSMConte
     await _do_approve_from_notification(callback.bot, callback.message.chat.id, telegram_id, None)
     await state.clear()
     await callback.answer()
+
+
+# ============================================================
+# ЛИСТ ОЖИДАНИЯ
+# ============================================================
+
+@router.callback_query(F.data == "join_waitlist")
+async def join_waitlist_callback(callback: CallbackQuery):
+    """Пользователь нажал «Встать в лист ожидания»."""
+    user = callback.from_user
+
+    # Проверяем, не в листе ли уже
+    if await is_in_waitlist(user.id):
+        position = await get_waitlist_position(user.id)
+        await callback.answer(f"Ты уже в очереди, позиция: {position}", show_alert=True)
+        return
+
+    # Проверяем, не активен ли уже
+    db_user = await get_user(user.id)
+    if db_user and db_user["status"] == "active":
+        await callback.answer("У тебя уже активная подписка", show_alert=True)
+        return
+
+    # Добавляем в лист
+    added = await add_to_waitlist(
+        telegram_id=user.id,
+        username=user.username or "",
+        first_name=user.first_name or ""
+    )
+
+    if not added:
+        await callback.answer("Ты уже в очереди", show_alert=True)
+        return
+
+    position = await get_waitlist_position(user.id)
+
+    await callback.message.edit_text(
+        f"✅ <b>Ты в листе ожидания</b>\n\n"
+        f"📋 Твоя позиция: <b>{position}</b>\n\n"
+        f"Мы напишем тебе, как только освободится место. "
+        f"Обычно это занимает несколько дней.",
+        parse_mode="HTML"
+    )
+    await callback.answer("Ты в очереди!")
+
+    logger.info(f"✅ {user.id} добавлен в лист ожидания (позиция {position})")
