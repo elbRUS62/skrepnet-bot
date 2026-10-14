@@ -1,7 +1,11 @@
+import logging
 import aiosqlite
 import secrets
 from datetime import datetime, timedelta
+
 from config import DB_PATH, SUBSCRIPTION_DAYS, ADMIN_IDS
+
+logger = logging.getLogger(__name__)
 
 
 async def init_db():
@@ -73,6 +77,13 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        # Миграция: добавляем поле renew_count, если его нет
+        async with db.execute("PRAGMA table_info(users)") as cur:
+            columns = [row[1] for row in await cur.fetchall()]
+
+        if "renew_count" not in columns:
+            await db.execute("ALTER TABLE users ADD COLUMN renew_count INTEGER DEFAULT 0")
+            logger.info("🔧 Добавлено поле renew_count в таблицу users")
         await db.commit()
 
 
@@ -552,3 +563,23 @@ async def is_limit_reached(max_users: int) -> bool:
         return False
     count = await count_active_users()
     return count >= max_users
+
+
+# ============================================================
+# СЧЁТЧИК ПРОДЛЕНИЙ
+# ============================================================
+
+async def increment_renew_count(telegram_id: int) -> int:
+    """Увеличить счётчик продлений. Возвращает новое значение."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE users SET renew_count = COALESCE(renew_count, 0) + 1
+            WHERE telegram_id = ?
+        """, (telegram_id,))
+        await db.commit()
+
+        async with db.execute(
+            "SELECT renew_count FROM users WHERE telegram_id = ?", (telegram_id,)
+        ) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else 0

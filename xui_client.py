@@ -106,6 +106,25 @@ class XUIClient:
             raise Exception(f"Update failed: {result}")
         return new_expiry
 
+    async def update_comment(self, email: str, comment: str) -> bool:
+        """Обновить только поле comment (не трогая остальные)."""
+        try:
+            client = await self.get_client(email)
+        except Exception:
+            return False
+
+        payload = {
+            "email": email,
+            "expiryTime": client.get("expiryTime", 0),
+            "limitIp": client.get("limitIp", LIMIT_IP),
+            "enable": client.get("enable", True),
+            "totalGB": client.get("totalGB", 0),
+            "comment": comment,
+            "subId": client.get("subId", ""),
+        }
+        result = await self._post(f"/panel/api/clients/update/{email}", payload)
+        return result.get("success", False)
+
     async def delete_client(self, email: str) -> bool:
         """Удалить клиента из 3x-ui по email."""
         result = await self._post(f"/panel/api/clients/del/{email}")

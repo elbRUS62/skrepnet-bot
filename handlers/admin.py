@@ -15,6 +15,7 @@ from database import (
     get_global_invites_stats, get_top_inviters,
     get_pending_requests,
     get_users_paginated, count_users_by_statuses,
+    increment_renew_count,
 )
 from xui_client import XUIClient
 from keyboards import (
@@ -624,6 +625,24 @@ async def admin_extend_days_process(message: Message, state: FSMContext):
     try:
         async with XUIClient() as xui:
             new_expiry = await xui.update_expiry(user["xui_email"], days=days)
+
+            # Увеличиваем счётчик продлений
+            new_count = await increment_renew_count(telegram_id)
+            date_str = new_expiry.strftime("%d.%m.%Y")
+
+            # Строим comment
+            base_comment = f"TG: {telegram_id}"
+            if user["username"]:
+                base_comment += f" @{user['username']}"
+            base_comment += " | бот"
+
+            comment = f"{base_comment} | продлён ×{new_count} ({date_str})"
+
+            try:
+                await xui.update_comment(user["xui_email"], comment)
+                logger.info(f"✅ Comment обновлён: {comment}")
+            except Exception as e:
+                logger.error(f"⚠️ Не удалось обновить comment: {e}")
 
         await renew_user(telegram_id, new_expires=new_expiry)
 

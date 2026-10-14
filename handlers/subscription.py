@@ -12,6 +12,7 @@ from database import (
     get_user, create_user_request, approve_user, renew_user,
     add_to_waitlist, is_in_waitlist, get_waitlist_position,
     count_active_users, is_limit_reached,
+    increment_renew_count,
 )
 from xui_client import XUIClient
 from keyboards import (
@@ -348,6 +349,25 @@ async def renew_callback(callback: CallbackQuery):
     try:
         async with XUIClient() as xui:
             new_expiry = await xui.update_expiry(user["xui_email"])
+
+            # Увеличиваем счётчик продлений
+            new_count = await increment_renew_count(callback.from_user.id)
+            date_str = new_expiry.strftime("%d.%m.%Y")
+
+            # Строим comment: база + продление
+            base_comment = f"TG: {callback.from_user.id}"
+            if user["username"]:
+                base_comment += f" @{user['username']}"
+            base_comment += " | бот"
+
+            comment = f"{base_comment} | продлён ×{new_count} ({date_str})"
+
+            # Обновляем comment в 3x-ui
+            try:
+                await xui.update_comment(user["xui_email"], comment)
+                logger.info(f"✅ Comment обновлён: {comment}")
+            except Exception as e:
+                logger.error(f"⚠️ Не удалось обновить comment: {e}")
 
         await renew_user(callback.from_user.id, new_expires=new_expiry)
         exp_date = new_expiry.strftime("%d.%m.%Y")
