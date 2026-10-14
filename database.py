@@ -328,3 +328,64 @@ async def get_top_inviters(limit: int = 5) -> list:
             LIMIT ?
         """, (limit,)) as cur:
             return await cur.fetchall()
+
+
+async def get_pending_requests() -> list:
+    """Все заявки со статусом pending или rejected."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM users
+            WHERE status IN ('pending', 'rejected')
+            ORDER BY created_at DESC
+        """) as cur:
+            return await cur.fetchall()
+
+
+async def reject_user(telegram_id: int):
+    """Помечает заявку как отклонённую."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET status = 'rejected' WHERE telegram_id = ?",
+            (telegram_id,)
+        )
+        await db.commit()
+
+
+# ============================================================
+# ПАГИНАЦИЯ ПОЛЬЗОВАТЕЛЕЙ (для админ-списков)
+# ============================================================
+
+async def get_users_paginated(statuses: list, offset: int = 0, limit: int = 10) -> list:
+    """Получить пользователей с определёнными статусами, с пагинацией.
+
+    Args:
+        statuses: список статусов, например ['active', 'pending']
+        offset: сколько пропустить
+        limit: сколько вернуть
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        placeholders = ",".join("?" * len(statuses))
+        async with db.execute(f"""
+            SELECT * FROM users
+            WHERE status IN ({placeholders})
+            ORDER BY created_at DESC
+            LIMIT ? OFFSET ?
+        """, (*statuses, limit, offset)) as cur:
+            return await cur.fetchall()
+
+
+async def count_users_by_statuses(statuses: list) -> int:
+    """Сколько пользователей с указанными статусами.
+
+    Args:
+        statuses: список статусов, например ['active', 'pending']
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        placeholders = ",".join("?" * len(statuses))
+        async with db.execute(f"""
+            SELECT COUNT(*) FROM users WHERE status IN ({placeholders})
+        """, statuses) as cur:
+            row = await cur.fetchone()
+            return row[0] if row else 0

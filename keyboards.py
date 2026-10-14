@@ -38,15 +38,34 @@ def admin_menu():
 
 def admin_manage_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="👤 Добавить админа", callback_data="admin_add")],
-        [InlineKeyboardButton(text="🗑 Удалить админа", callback_data="admin_del")],
-        [InlineKeyboardButton(text="📋 Список админов", callback_data="admin_list")],
-        [InlineKeyboardButton(text="🔄 Обновить подписку", callback_data="admin_extend")],
-        [InlineKeyboardButton(text="♻️ Сбросить заявку", callback_data="admin_reset")],
-        [InlineKeyboardButton(text="🗑 Удалить пользователя", callback_data="admin_delete_user")],
-        [InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast")],
-        [InlineKeyboardButton(text="🔐 Панель 3x-ui", callback_data="admin_panel")],
-        [InlineKeyboardButton(text="⬅️ Закрыть", callback_data="admin_close")]
+        [
+            InlineKeyboardButton(text="📋 Список заявок", callback_data="admin_list_requests"),
+            InlineKeyboardButton(text="🔄 Обновить подписку", callback_data="admin_extend"),
+        ],
+        [
+            InlineKeyboardButton(text="📢 Рассылка", callback_data="admin_broadcast"),
+            InlineKeyboardButton(text="👥 Пользователи", callback_data="admin_menu_users"),
+        ],
+        [
+            InlineKeyboardButton(text="🔐 Панель 3x-ui", callback_data="admin_panel"),
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Закрыть", callback_data="admin_close"),
+        ],
+    ])
+
+
+def admin_submenu_users():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="♻️ Сбросить заявку", callback_data="admin_reset"),
+        ],
+        [
+            InlineKeyboardButton(text="🗑 Удалить пользователя", callback_data="admin_delete_user"),
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_manage_back"),
+        ],
     ])
 
 
@@ -137,7 +156,7 @@ def admin_panel_keyboard():
 
 def support_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🆘 Поддержка", url="https://t.me/skrepnet_support")]
+        [InlineKeyboardButton(text="🆘 Техподдержка", url="https://t.me/skrepnet_support")]
     ])
 
 def documents_keyboard():
@@ -227,4 +246,62 @@ def email_conflict_keyboard(telegram_id: int, base_email: str):
         text="❌ Отменить заявку",
         callback_data=f"cancel_email:{telegram_id}"
     )])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def users_list_keyboard(users: list, action: str, page: int, total: int, per_page: int = 10):
+    """Клавиатура со списком пользователей и пагинацией.
+
+    action: 'extend' | 'delete' | 'reset'
+    """
+    buttons = []
+
+    for user in users:
+        # Приоритет: username > first_name > telegram_id
+        if user["username"]:
+            display = f"@{user['username']}"
+            if user["first_name"]:
+                display += f" — {user['first_name']}"
+        elif user["first_name"]:
+            display = f"{user['first_name']} — {user['telegram_id']}"
+        else:
+            display = str(user["telegram_id"])
+
+        # Обрезаем до 60 символов (Telegram ограничивает 64)
+        if len(display) > 60:
+            display = display[:60] + "…"
+
+        buttons.append([InlineKeyboardButton(
+            text=display,
+            callback_data=f"user_action:{action}:{user['telegram_id']}"
+        )])
+
+    # Пагинация
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton(
+            text="⬅️",
+            callback_data=f"users_page:{action}:{page - 1}"
+        ))
+
+    total_pages = (total + per_page - 1) // per_page
+    nav.append(InlineKeyboardButton(
+        text=f"{page + 1}/{total_pages}",
+        callback_data="noop"
+    ))
+
+    if (page + 1) * per_page < total:
+        nav.append(InlineKeyboardButton(
+            text="➡️",
+            callback_data=f"users_page:{action}:{page + 1}"
+        ))
+
+    if nav:
+        buttons.append(nav)
+
+    buttons.append([InlineKeyboardButton(
+        text="⬅️ Назад",
+        callback_data="admin_manage_back"
+    )])
+
     return InlineKeyboardMarkup(inline_keyboard=buttons)

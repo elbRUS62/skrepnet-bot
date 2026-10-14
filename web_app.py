@@ -66,7 +66,15 @@ def activate(token):
 
         try:
             async with XUIClient() as xui:
-                sub_id = await xui.add_client(xui_email, days=SUBSCRIPTION_DAYS)
+                auto_comment = f"web | inviter TG: {invite['created_by']}"
+                if invite["friend_username"]:
+                    auto_comment = f"@{invite['friend_username']} | " + auto_comment
+
+                sub_id = await xui.add_client(
+                    xui_email,
+                    days=SUBSCRIPTION_DAYS,
+                    comment=auto_comment
+                )
                 sub_url = xui.build_sub_url(sub_id)
         except Exception as e:
             logger.error(f"Ошибка создания клиента: {e}")

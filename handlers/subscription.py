@@ -4,7 +4,7 @@ from datetime import datetime
 
 import aiosqlite
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
 from config import ADMIN_IDS, DONATE_TEXT, DB_PATH, SUB_BASE_URL, SUB_PATH
@@ -84,7 +84,15 @@ async def accept_terms(callback: CallbackQuery):
         # АВТООДОБРЕНИЕ для рефералов
         try:
             async with XUIClient() as xui:
-                sub_id = await xui.add_client(xui_email)
+                auto_comment = f"TG: {callback.from_user.id}"
+                if callback.from_user.username:
+                    auto_comment += f" @{callback.from_user.username}"
+                if invited_by:
+                    auto_comment += f" | ref: {invited_by}"
+                else:
+                    auto_comment += " | bot"
+
+                sub_id = await xui.add_client(xui_email, comment=auto_comment)
                 await approve_user(callback.from_user.id, sub_id)
                 sub_url = xui.build_sub_url(sub_id)
 
@@ -167,7 +175,8 @@ async def decline_terms(callback: CallbackQuery):
 
 
 @router.callback_query(F.data.startswith("approve:"))
-async def approve_callback(callback: CallbackQuery):
+async def approve_callback(callback: CallbackQuery, state: FSMContext):
+    """Одобрение заявки из уведомления — сначала спрашиваем комментарий."""
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
@@ -192,50 +201,31 @@ async def approve_callback(callback: CallbackQuery):
         await callback.answer(f"Неверный статус: {user['status']}", show_alert=True)
         return
 
-    try:
-        async with XUIClient() as xui:
-            sub_id = await xui.add_client(user["xui_email"])
-            await approve_user(telegram_id, sub_id)
-            sub_url = xui.build_sub_url(sub_id)
+    # Авто-часть комментария для подсказки
+    auto_comment = f"TG: {telegram_id}"
+    if user["username"]:
+        auto_comment += f" @{user['username']}"
+    auto_comment += " | bot"
 
-        await callback.message.edit_text(
-            f"✅ Заявка одобрена\n\n"
-            f"Пользователь: {user['first_name']}\n"
-            f"Email: {user['xui_email']}\n"
-            f"Sub ID: {sub_id}"
-        )
+    await state.update_data(approve_tg_id=telegram_id, from_notification=True)
 
-        await callback.bot.send_message(
-            telegram_id,
-            f"🎉 Твоя подписка готова!\n\n"
-            f"🔗 Ссылка:\n<code>{sub_url}</code>\n\n"
-            f"📱 Лимит: 3 IP одновременно\n"
-            f"⏳ Срок: 30 дней. Продлить можно через «🔑 Моя подписка».\n\n"
-            f"📢 Помоги проекту расти — пригласи друзей.\n\n"
-            f"{DONATE_TEXT}",
-            reply_markup=subscription_keyboard(),
-            parse_mode="HTML"
-        )
-
-    except Exception as e:
-        error_msg = str(e)
-        if "email already in use" in error_msg:
-            # Email занят — предлагаем админу выбрать новое имя
-            base_email = user["xui_email"]
-
-            await callback.message.edit_text(
-                f"⚠️ <b>Email '{base_email}' уже занят в 3x-ui</b>\n\n"
-                f"👤 Пользователь: {user['first_name']}\n"
-                f"🆔 <code>{telegram_id}</code>\n\n"
-                f"Выбери новое имя для клиента:",
-                parse_mode="HTML",
-                reply_markup=email_conflict_keyboard(telegram_id, base_email)
-            )
-            logger.warning(f"⚠️ Конфликт email {base_email}, ждём выбор админа")
-        else:
-            logger.error(f"❌ Ошибка при одобрении {user['xui_email']}: {e}")
-            await callback.message.edit_text(f"❌ Ошибка: {e}")
-            await callback.answer("Ошибка при создании клиента", show_alert=True)
+    await callback.message.edit_text(
+        f"📝 <b>Комментарий для 3x-ui</b>\n\n"
+        f"👤 {user['first_name']}\n"
+        f"🆔 <code>{telegram_id}</code>\n\n"
+        f"Введи текст (например, «VIP клиент, друг Ильи»)\n"
+        f"или нажми «Пропустить» — тогда будет авто:\n"
+        f"<code>{auto_comment}</code>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="⏭ Пропустить",
+                callback_data=f"approve_skip_comment:{telegram_id}"
+            )]
+        ])
+    )
+    await state.set_state(AdminStates.waiting_comment)
+    await callback.answer()
 
 
 @router.callback_query(F.data.startswith("reject:"))
@@ -398,7 +388,12 @@ async def retry_email_callback(callback: CallbackQuery):
 
     try:
         async with XUIClient() as xui:
-            sub_id = await xui.add_client(new_email)
+            auto_comment = f"TG: {telegram_id}"
+            if user["username"]:
+                auto_comment += f" @{user['username']}"
+            auto_comment += " | bot (renamed)"
+
+            sub_id = await xui.add_client(new_email, comment=auto_comment)
             await approve_user(telegram_id, sub_id)
             sub_url = xui.build_sub_url(sub_id)
 
@@ -492,7 +487,12 @@ async def manual_email_process(message: Message, state: FSMContext):
 
     try:
         async with XUIClient() as xui:
-            sub_id = await xui.add_client(new_email)
+            auto_comment = f"TG: {telegram_id}"
+            if user["username"]:
+                auto_comment += f" @{user['username']}"
+            auto_comment += " | manual (admin)"
+
+            sub_id = await xui.add_client(new_email, comment=auto_comment)
             await approve_user(telegram_id, sub_id)
             sub_url = xui.build_sub_url(sub_id)
 
@@ -601,4 +601,86 @@ async def use_existing_email_callback(callback: CallbackQuery):
         logger.error(f"❌ Ошибка при использовании {existing_email}: {e}")
         await callback.answer(f"Ошибка: {e}", show_alert=True)
 
+    await callback.answer()
+
+
+# ============================================================
+# ОДОБРЕНИЕ С КОММЕНТАРИЕМ (из уведомления)
+# ============================================================
+
+async def _do_approve_from_notification(bot, chat_id: int, telegram_id: int, custom_comment: str = None):
+    """Создать клиента из уведомления с комментарием."""
+    user = await get_user(telegram_id)
+    if not user:
+        await bot.send_message(chat_id, f"❌ Пользователь {telegram_id} не найден")
+        return
+
+    auto_comment = f"TG: {telegram_id}"
+    if user["username"]:
+        auto_comment += f" @{user['username']}"
+
+    if custom_comment:
+        comment = f"{custom_comment} | {auto_comment}"
+    else:
+        comment = f"{auto_comment} | bot"
+
+    try:
+        async with XUIClient() as xui:
+            try:
+                sub_id = await xui.add_client(user["xui_email"], comment=comment)
+                await approve_user(telegram_id, sub_id)
+                sub_url = xui.build_sub_url(sub_id)
+            except Exception as e:
+                if "email already in use" in str(e):
+                    base_email = user["xui_email"]
+                    await bot.send_message(
+                        chat_id,
+                        f"⚠️ <b>Email '{base_email}' уже занят в 3x-ui</b>\n\n"
+                        f"👤 {user['first_name']}\n"
+                        f"🆔 <code>{telegram_id}</code>\n\n"
+                        f"Выбери новое имя для клиента:",
+                        parse_mode="HTML",
+                        reply_markup=email_conflict_keyboard(telegram_id, base_email)
+                    )
+                    return
+                else:
+                    raise
+
+        await bot.send_message(
+            chat_id,
+            f"✅ <b>Заявка одобрена</b>\n\n"
+            f"👤 {user['first_name']}\n"
+            f"📧 {user['xui_email']}\n"
+            f"📝 <code>{comment}</code>",
+            parse_mode="HTML"
+        )
+
+        await bot.send_message(
+            telegram_id,
+            f"🎉 <b>Твоя подписка готова!</b>\n\n"
+            f"🔗 Ссылка:\n<code>{sub_url}</code>\n\n"
+            f"📱 Лимит: 3 IP одновременно\n"
+            f"⏳ Срок: 30 дней. Продлить можно через «🔑 Моя подписка».\n\n"
+            f"{DONATE_TEXT}",
+            parse_mode="HTML",
+            reply_markup=subscription_keyboard()
+        )
+
+        logger.info(f"✅ Одобрен из уведомления {user['xui_email']} | comment={comment}")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при одобрении {user['xui_email']}: {e}")
+        await bot.send_message(chat_id, f"❌ Ошибка: {e}")
+
+
+@router.callback_query(F.data.startswith("approve_skip_comment:"))
+async def approve_skip_comment_callback(callback: CallbackQuery, state: FSMContext):
+    """Пропустить комментарий — использовать авто."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    telegram_id = int(callback.data.split(":")[1])
+    await _do_approve_from_notification(callback.bot, callback.message.chat.id, telegram_id, None)
+    await state.clear()
     await callback.answer()

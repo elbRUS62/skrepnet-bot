@@ -121,13 +121,13 @@ async def invite_friend(message: Message):
         parse_mode="Markdown"
     )
 
-@router.message(F.text == "🆘 Поддержка")
+@router.message(F.text == "🆘 Техподдержка")
 async def support_button(message: Message):
     await message.answer(
-        "🆘 <b>Поддержка SkrepNet</b>\n\n"
+        "🆘 <b>Техподдержка SkrepNet</b>\n\n"
         "Если у тебя возникли вопросы, проблемы с подключением "
         "или ты хочешь сообщить о сбое — напиши нам.\n\n"
-        "📢 Канал поддержки: @skrepnet_support",
+        "📢 Канал техподдержки: @skrepnet_support",
         reply_markup=support_keyboard(),
         parse_mode="HTML"
     )

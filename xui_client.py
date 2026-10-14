@@ -40,8 +40,14 @@ class XUIClient:
                 raise Exception("Unauthorized: API token is invalid or expired")
             return await resp.json()
 
-    async def add_client(self, email: str, days: int = None) -> str:
-        """Создать клиента сразу в двух инбаундах."""
+    async def add_client(self, email: str, days: int = None, comment: str = None) -> str:
+        """Создать клиента в 3x-ui.
+
+        Args:
+            email: email клиента (используется как имя)
+            days: срок подписки в днях
+            comment: комментарий для панели 3x-ui
+        """
         if days is None:
             days = SUBSCRIPTION_DAYS
         expires_ms = int((datetime.now() + timedelta(days=days)).timestamp() * 1000)
@@ -57,7 +63,8 @@ class XUIClient:
                 "limitIp": LIMIT_IP,
                 "totalGB": 0,
                 "tgId": 0,
-                "subId": sub_id
+                "subId": sub_id,
+                "comment": comment or ""
             },
             "inboundIds": [INBOUND_GB]
         }
@@ -67,11 +74,15 @@ class XUIClient:
         return sub_id
 
     async def get_client(self, email: str) -> dict:
-        """Получить данные клиента, включая subId."""
+        """Получить данные клиента, включая subId.
+        Возвращает вложенный объект client (как ожидает остальной код)."""
         result = await self._get(f"/panel/api/clients/get/{email}")
         if not result.get("success"):
             raise Exception(f"Get client failed: {result}")
-        return result["obj"]
+        obj = result["obj"]
+        # 3x-ui возвращает {client: {...}, inboundIds: [...], ...}
+        # Разворачиваем, чтобы код обращался к полям напрямую (client.get("subId"))
+        return obj.get("client", obj)
 
     async def update_expiry(self, email: str, days: int = SUBSCRIPTION_DAYS):
         """Продлить подписку."""

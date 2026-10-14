@@ -6,8 +6,6 @@ class RegStates(StatesGroup):
 
 
 class AdminStates(StatesGroup):
-    waiting_add_admin = State()
-    waiting_del_admin = State()
     waiting_extend_username = State()
     waiting_extend_days = State()
     waiting_reset_username = State()
@@ -15,3 +13,5 @@ class AdminStates(StatesGroup):
     waiting_delete_username = State()
     waiting_custom_email = State()
     waiting_custom_email_tg_id = State()
+    waiting_approve_request_username = State()
+    waiting_comment = State() 

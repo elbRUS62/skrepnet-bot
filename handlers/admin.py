@@ -4,20 +4,23 @@ from datetime import datetime, timedelta
 
 import aiosqlite
 from aiogram import Router, F, Bot
-from aiogram.types import Message, CallbackQuery
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
 
-from config import ADMIN_IDS, DB_PATH
+from config import ADMIN_IDS, DB_PATH, DONATE_TEXT
 from database import (
     get_user, get_user_by_username, is_admin, add_admin, remove_admin,
-    get_all_admins, delete_user, renew_user,
-    get_global_invites_stats, get_top_inviters
+    get_all_admins, delete_user, renew_user, approve_user,
+    get_global_invites_stats, get_top_inviters,
+    get_pending_requests,
+    get_users_paginated, count_users_by_statuses,
 )
 from xui_client import XUIClient
 from keyboards import (
-    admin_menu, admin_manage_keyboard, admin_approve_keyboard,
-    admin_panel_keyboard
+    admin_menu, admin_manage_keyboard,
+    admin_panel_keyboard, email_conflict_keyboard, subscription_keyboard,
+    users_list_keyboard, admin_submenu_users,
 )
 from .states import AdminStates
 
@@ -112,283 +115,6 @@ async def admin_close(callback: CallbackQuery):
     await callback.message.delete()
     await callback.answer()
 
-
-# ============================================================
-# ДОБАВЛЕНИЕ АДМИНА
-# ============================================================
-
-@router.callback_query(F.data == "admin_add")
-async def admin_add_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMIN_IDS:
-        return
-    await callback.message.edit_text(
-        "👤 Введи <b>username</b> пользователя (без @):\n\n"
-        "Например: <code>ivan_petrov</code>",
-        parse_mode="HTML"
-    )
-    await state.set_state(AdminStates.waiting_add_admin)
-    await callback.answer()
-
-
-@router.message(AdminStates.waiting_add_admin)
-async def admin_add_process(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMIN_IDS:
-        return
-
-    username = message.text.strip().lstrip("@")
-    user = await get_user_by_username(username)
-
-    if not user:
-        await message.answer(
-            f"❌ @{username} не найден в базе.\n"
-            f"Он должен сначала написать боту /start.",
-            reply_markup=admin_menu()
-        )
-        await state.clear()
-        return
-
-    # Проверка, не из .env ли этот админ
-    if user["telegram_id"] in ADMIN_IDS:
-        await message.answer(
-            f"⚠️ @{username} уже является основным админом (из .env).",
-            reply_markup=admin_menu()
-        )
-        await state.clear()
-        return
-
-    await add_admin(user["telegram_id"], username, message.from_user.id)
-    await message.answer(
-        f"✅ @{username} (ID {user['telegram_id']}) добавлен в админы.",
-        reply_markup=admin_menu()
-    )
-
-    try:
-        await message.bot.send_message(
-            user["telegram_id"],
-            "🎉 Тебя назначили админом SkrepNet!\n\n"
-            "В меню появится кнопка «🛠 Управление»."
-        )
-    except Exception:
-        pass
-
-    await state.clear()
-
-
-# ============================================================
-# УДАЛЕНИЕ АДМИНА
-# ============================================================
-
-@router.callback_query(F.data == "admin_del")
-async def admin_del_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMIN_IDS:
-        return
-    await callback.message.edit_text(
-        "🗑 Введи <b>username</b> админа для удаления (без @):",
-        parse_mode="HTML"
-    )
-    await state.set_state(AdminStates.waiting_del_admin)
-    await callback.answer()
-
-
-@router.message(AdminStates.waiting_del_admin)
-async def admin_del_process(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMIN_IDS:
-        return
-
-    username = message.text.strip().lstrip("@")
-    user = await get_user_by_username(username)
-
-    if user and user["telegram_id"] in ADMIN_IDS:
-        await message.answer(
-            f"⚠️ @{username} — основной админ (из .env).\n\n"
-            f"Его нельзя удалить через бота. Убери его ID из ADMIN_ID в .env "
-            f"и перезапусти бота.",
-            reply_markup=admin_menu()
-        )
-        await state.clear()
-        return
-
-    success = await remove_admin(username)
-
-    if success:
-        await message.answer(f"✅ @{username} удалён из админов.", reply_markup=admin_menu())
-    else:
-        await message.answer(
-            f"❌ @{username} не найден в списке админов, добавленных через бота.",
-            reply_markup=admin_menu()
-        )
-
-    await state.clear()
-
-
-# ============================================================
-# СПИСОК АДМИНОВ
-# ============================================================
-
-@router.callback_query(F.data == "admin_list")
-async def admin_list(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS:
-        return
-
-    text = "👤 <b>Список админов</b>\n\n"
-    text += "<b>Основные (.env):</b>\n"
-    for aid in ADMIN_IDS:
-        text += f"  • <code>{aid}</code>\n"
-
-    extra = await get_all_admins()
-    if extra:
-        text += "\n<b>Добавленные через бота:</b>\n"
-        for adm in extra:
-            text += f"  • @{adm['username']} (<code>{adm['telegram_id']}</code>)\n"
-
-    await callback.message.edit_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=admin_manage_keyboard()
-    )
-    await callback.answer()
-
-
-# ============================================================
-# ОБНОВЛЕНИЕ ПОДПИСКИ
-# ============================================================
-
-@router.callback_query(F.data == "admin_extend")
-async def admin_extend_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMIN_IDS:
-        return
-    await callback.message.edit_text(
-        "🔄 Введи <b>username</b> пользователя, которому хочешь обновить подписку (без @):",
-        parse_mode="HTML"
-    )
-    await state.set_state(AdminStates.waiting_extend_username)
-    await callback.answer()
-
-
-@router.message(AdminStates.waiting_extend_username)
-async def admin_extend_get_days(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMIN_IDS:
-        return
-
-    username = message.text.strip().lstrip("@")
-    user = await get_user_by_username(username)
-
-    if not user:
-        await message.answer(f"❌ @{username} не найден.", reply_markup=admin_menu())
-        await state.clear()
-        return
-
-    if user["status"] != "active":
-        await message.answer(f"❌ У @{username} нет активной подписки.", reply_markup=admin_menu())
-        await state.clear()
-        return
-
-    await state.update_data(target_username=username, target_user=dict(user))
-    await message.answer(
-        f"👤 Пользователь: @{username}\n\n"
-        f"На сколько <b>дней</b> обновить подписку?",
-        parse_mode="HTML"
-    )
-    await state.set_state(AdminStates.waiting_extend_days)
-
-
-@router.message(AdminStates.waiting_extend_days)
-async def admin_extend_process(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMIN_IDS:
-        return
-
-    try:
-        days = int(message.text.strip())
-        if days < 1 or days > 3650:
-            raise ValueError
-    except ValueError:
-        await message.answer("❌ Введи число от 1 до 3650.")
-        return
-
-    data = await state.get_data()
-    user = data["target_user"]
-
-    try:
-        async with XUIClient() as xui:
-            client = await xui.get_client(user["xui_email"])
-            current_expiry = client.get("expiryTime", 0)
-
-            if current_expiry and current_expiry > 0:
-                current_dt = datetime.fromtimestamp(current_expiry / 1000)
-                new_expiry = max(current_dt, datetime.now()) + timedelta(days=days)
-            else:
-                new_expiry = datetime.now() + timedelta(days=days)
-
-            expires_ms = int(new_expiry.timestamp() * 1000)
-            await xui._post(f"/panel/api/clients/update/{user['xui_email']}", {
-                "email": user["xui_email"],
-                "expiryTime": expires_ms,
-                "limitIp": 3,
-                "enable": True,
-                "totalGB": 0
-            })
-
-        await renew_user(user["telegram_id"], new_expires=new_expiry)
-
-        await message.answer(
-            f"✅ @{user['username']}: подписка обновлена — {days} дней.\n"
-            f"📅 Новая дата окончания: {new_expiry.strftime('%d.%m.%Y')}",
-            reply_markup=admin_menu()
-        )
-
-        try:
-            await message.bot.send_message(
-                user["telegram_id"],
-                f"🎁 Админ обновил твою подписку на {days} дней!\n"
-                f"📅 Новая дата: {new_expiry.strftime('%d.%m.%Y')}"
-            )
-        except Exception:
-            pass
-
-    except Exception as e:
-        await message.answer(f"❌ Ошибка: {e}", reply_markup=admin_menu())
-
-    await state.clear()
-
-
-# ============================================================
-# СБРОС ЗАЯВКИ
-# ============================================================
-
-@router.callback_query(F.data == "admin_reset")
-async def admin_reset_start(callback: CallbackQuery, state: FSMContext):
-    if callback.from_user.id not in ADMIN_IDS:
-        return
-    await callback.message.edit_text(
-        "♻️ Введи <b>username</b> пользователя (без @):",
-        parse_mode="HTML"
-    )
-    await state.set_state(AdminStates.waiting_reset_username)
-    await callback.answer()
-
-
-@router.message(AdminStates.waiting_reset_username)
-async def admin_reset_process(message: Message, state: FSMContext):
-    if message.from_user.id not in ADMIN_IDS:
-        return
-
-    username = message.text.strip().lstrip("@")
-    user = await get_user_by_username(username)
-
-    if not user:
-        await message.answer(f"❌ @{username} не найден.", reply_markup=admin_menu())
-        await state.clear()
-        return
-
-    await delete_user(user["telegram_id"])
-    await message.answer(
-        f"✅ @{username} удалён из базы.\n\n"
-        f"⚠️ Не забудь удалить клиента в панели 3x-ui.",
-        reply_markup=admin_menu()
-    )
-    await state.clear()
-
-
 # ============================================================
 # РАССЫЛКА
 # ============================================================
@@ -451,67 +177,651 @@ async def admin_panel_link(callback: CallbackQuery):
     )
     await callback.answer()
 
+
 # ============================================================
-# УДАЛЕНИЕ ПОЛЬЗОВАТЕЛЯ (БД + 3x-ui)
+# СПИСОК ЗАЯВОК (с кнопками выбора)
 # ============================================================
 
-@router.callback_query(F.data == "admin_delete_user")
-async def admin_delete_user_start(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data == "admin_list_requests")
+async def admin_list_requests(callback: CallbackQuery):
+    """Список заявок с кнопками выбора."""
     if callback.from_user.id not in ADMIN_IDS:
         return
-    await callback.message.edit_text(
-        "🗑 Введи <b>username</b> пользователя, которого хочешь удалить (без @):\n\n"
-        "⚠️ Он будет удалён из базы бота и из панели 3x-ui.",
-        parse_mode="HTML"
-    )
-    await state.set_state(AdminStates.waiting_delete_username)
+    await _show_requests_list(callback)
     await callback.answer()
 
 
-@router.message(AdminStates.waiting_delete_username)
-async def admin_delete_user_process(message: Message, state: FSMContext):
+async def _show_requests_list(callback: CallbackQuery):
+    """Общая функция отрисовки списка заявок."""
+    requests = await get_pending_requests()
+
+    if not requests:
+        await callback.message.edit_text(
+            "📋 <b>Заявок нет</b>\n\nВсе заявки обработаны.",
+            parse_mode="HTML",
+            reply_markup=admin_manage_keyboard()
+        )
+        return
+
+    text = f"📋 <b>Заявки ({len(requests)})</b>\n\n"
+    text += "Нажми на пользователя, чтобы открыть карточку:\n"
+
+    buttons = []
+    for req in requests:
+        status_emoji = "⏳" if req["status"] == "pending" else "❌"
+        name = req["first_name"] or "Без имени"
+        short_name = name[:20] + "…" if len(name) > 20 else name
+        label = f"{status_emoji} {short_name} — {req['telegram_id']}"
+
+        buttons.append([InlineKeyboardButton(
+            text=label[:64],
+            callback_data=f"req_view:{req['telegram_id']}"
+        )])
+
+    buttons.append([InlineKeyboardButton(
+        text="⬅️ Назад",
+        callback_data="admin_manage_back"
+    )])
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
+@router.callback_query(F.data.startswith("req_view:"))
+async def request_approve_callback(callback: CallbackQuery, state: FSMContext):
+    """Шаг 1: спрашиваем комментарий для 3x-ui."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    telegram_id = int(callback.data.split(":")[1])
+    user = await get_user(telegram_id)
+
+    if not user:
+        await callback.answer("Пользователь не найден", show_alert=True)
+        return
+
+    if user["status"] == "active":
+        await callback.answer("⚠️ Уже активна", show_alert=True)
+        return
+
+    # Авто-часть комментария для показа в подсказке
+    auto_comment = f"TG: {telegram_id}"
+    if user["username"]:
+        auto_comment += f" @{user['username']}"
+    auto_comment += " | bot"
+
+    await state.update_data(approve_tg_id=telegram_id)
+
+    await callback.message.edit_text(
+        f"📝 <b>Комментарий для 3x-ui</b>\n\n"
+        f"👤 {user['first_name']}\n"
+        f"🆔 <code>{telegram_id}</code>\n\n"
+        f"Введи текст (например, «VIP клиент, друг Ильи»)\n"
+        f"или нажми «Пропустить» — тогда будет авто:\n"
+        f"<code>{auto_comment}</code>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="⏭ Пропустить",
+                callback_data=f"req_skip_comment:{telegram_id}"
+            )]
+        ])
+    )
+    await state.set_state(AdminStates.waiting_comment)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("req_reject:"))
+async def request_reject_callback(callback: CallbackQuery):
+    """Отклонить заявку из карточки."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    telegram_id = int(callback.data.split(":")[1])
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE users SET status = 'rejected' WHERE telegram_id = ?",
+            (telegram_id,)
+        )
+        await db.commit()
+
+    await callback.answer("❌ Отклонено", show_alert=True)
+    await _show_requests_list(callback)
+
+
+@router.callback_query(F.data.startswith("req_delete:"))
+async def request_delete_callback(callback: CallbackQuery):
+    """Удалить пользователя из БД."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    telegram_id = int(callback.data.split(":")[1])
+
+    await delete_user(telegram_id)
+    await callback.answer("🗑 Удалён", show_alert=True)
+    await _show_requests_list(callback)
+
+
+@router.callback_query(F.data == "admin_manage_back")
+async def admin_manage_back(callback: CallbackQuery):
+    """Вернуться в меню «Управление»."""
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+
+    await callback.message.edit_text(
+        "🛠 <b>Управление ботом</b>\n\nВыбери действие:",
+        reply_markup=admin_manage_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+async def _show_requests_list(callback: CallbackQuery):
+    """Общая функция отрисовки списка заявок."""
+    requests = await get_pending_requests()
+
+    if not requests:
+        await callback.message.edit_text(
+            "📋 <b>Заявок нет</b>\n\nВсе заявки обработаны.",
+            parse_mode="HTML",
+            reply_markup=admin_manage_keyboard()
+        )
+        return
+
+    text = f"📋 <b>Заявки ({len(requests)})</b>\n\n"
+    text += "Нажми на пользователя, чтобы открыть карточку:\n"
+
+    # Кнопки — по одной на пользователя
+    buttons = []
+    for req in requests:
+        status_emoji = "⏳" if req["status"] == "pending" else "❌"
+        name = req["first_name"] or "Без имени"
+        # Обрезаем имя до 20 символов для кнопки
+        short_name = name[:20] + "…" if len(name) > 20 else name
+        label = f"{status_emoji} {short_name} — {req['telegram_id']}"
+
+        buttons.append([InlineKeyboardButton(
+            text=label[:64],  # Telegram ограничивает 64 символа
+            callback_data=f"req_view:{req['telegram_id']}"
+        )])
+
+    buttons.append([InlineKeyboardButton(
+        text="⬅️ Назад",
+        callback_data="admin_manage_back"
+    )])
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+
+
+@router.callback_query(F.data.startswith("req_view:"))
+async def request_view_callback(callback: CallbackQuery):
+    """Карточка конкретной заявки."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    telegram_id = int(callback.data.split(":")[1])
+    user = await get_user(telegram_id)
+
+    if not user:
+        await callback.answer("Пользователь не найден", show_alert=True)
+        return
+
+    status_ru = {
+        "pending": "⏳ Ожидает одобрения",
+        "rejected": "❌ Отклонена",
+        "active": "✅ Активна",
+        "new": "🆕 Новая",
+    }.get(user["status"], user["status"])
+
+    username = f"@{user['username']}" if user["username"] else "—"
+
+    text = (
+        f"👤 <b>{user['first_name'] or 'Без имени'}</b>\n\n"
+        f"🆔 <code>{user['telegram_id']}</code>\n"
+        f"📧 <code>{user['xui_email']}</code>\n"
+        f"👤 {username}\n"
+        f"📊 {status_ru}\n"
+    )
+
+    if user["created_at"]:
+        text += f"📅 Создана: {user['created_at']}\n"
+
+    buttons = []
+
+    if user["status"] in ("pending", "rejected", "new"):
+        buttons.append([
+            InlineKeyboardButton(
+                text="✅ Одобрить",
+                callback_data=f"req_approve:{telegram_id}"
+            ),
+            InlineKeyboardButton(
+                text="❌ Отклонить",
+                callback_data=f"req_reject:{telegram_id}"
+            ),
+        ])
+
+    buttons.append([InlineKeyboardButton(
+        text="🗑 Удалить из БД",
+        callback_data=f"req_delete:{telegram_id}"
+    )])
+
+    buttons.append([InlineKeyboardButton(
+        text="⬅️ К списку",
+        callback_data="admin_list_requests"
+    )])
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons)
+    )
+    await callback.answer()
+@router.callback_query(F.data.startswith("req_delete:"))
+async def request_delete_callback(callback: CallbackQuery):
+    """Удалить пользователя из БД."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    telegram_id = int(callback.data.split(":")[1])
+
+    await delete_user(telegram_id)
+    await callback.answer("🗑 Удалён", show_alert=True)
+
+    # Возвращаемся к списку
+    await _show_requests_list(callback)
+
+
+# ============================================================
+# СПИСКИ ПОЛЬЗОВАТЕЛЕЙ С ПАГИНАЦИЕЙ
+# ============================================================
+
+PER_PAGE = 10
+
+
+@router.callback_query(F.data == "admin_extend")
+async def admin_extend_list(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    await _show_users_list(callback, action="extend", page=0)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_delete_user")
+async def admin_delete_user_list(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    await _show_users_list(callback, action="delete", page=0)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_reset")
+async def admin_reset_list(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    await _show_users_list(callback, action="reset", page=0)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("users_page:"))
+async def users_page_callback(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    _, action, page_str = callback.data.split(":")
+    await _show_users_list(callback, action=action, page=int(page_str))
+    await callback.answer()
+
+
+@router.callback_query(F.data == "noop")
+async def noop_callback(callback: CallbackQuery):
+    await callback.answer()
+
+
+async def _show_users_list(callback: CallbackQuery, action: str, page: int):
+    statuses_map = {
+        "extend": ["active"],
+        "delete": ["active", "pending", "rejected", "new"],
+        "reset": ["active", "pending", "rejected", "new"],
+    }
+    statuses = statuses_map.get(action, ["active"])
+
+    total = await count_users_by_statuses(statuses)
+    users = await get_users_paginated(statuses, offset=0, limit=10000)
+
+    # Сортировка: сначала кириллица (А→Я), потом латиница (A→Z)
+    # Ключ сортировки — username (если есть), иначе first_name, иначе telegram_id
+    def get_sort_name(u):
+        if u["username"]:
+            return u["username"].lower()
+        if u["first_name"]:
+            return u["first_name"].lower()
+        return str(u["telegram_id"])
+
+    def is_cyrillic(text: str) -> bool:
+        for c in text:
+            if 'а' <= c.lower() <= 'я' or c.lower() == 'ё':
+                return True
+        return False
+
+    def sort_key(u):
+        name = get_sort_name(u)
+        cyr = is_cyrillic(name)
+        return (0 if cyr else 1, name)
+
+    users = sorted(users, key=sort_key)
+
+    # Пагинация вручную
+    start = page * PER_PAGE
+    end = start + PER_PAGE
+    users = users[start:end]
+
+    titles = {
+        "extend": "🔄 Обновить подписку",
+        "delete": "🗑 Удалить пользователя",
+        "reset": "♻️ Сбросить заявку",
+    }
+    hints = {
+        "extend": "Выбери пользователя, которому продлить подписку:",
+        "delete": "Выбери пользователя, которого удалить (из БД и 3x-ui):",
+        "reset": "Выбери пользователя для сброса заявки:",
+    }
+
+    if not users:
+        await callback.message.edit_text(
+            f"<b>{titles.get(action)}</b>\n\n"
+            f"❌ Нет пользователей с подходящим статусом.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_manage_back")]
+            ])
+        )
+        return
+
+    text = (
+        f"<b>{titles.get(action)}</b>\n\n"
+        f"{hints.get(action)}\n\n"
+        f"<i>Всего: {total}</i>"
+    )
+
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=users_list_keyboard(users, action, page, total, PER_PAGE)
+    )
+
+
+@router.callback_query(F.data.startswith("user_action:"))
+async def user_action_callback(callback: CallbackQuery, state: FSMContext):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    _, action, tg_id_str = callback.data.split(":")
+    telegram_id = int(tg_id_str)
+    user = await get_user(telegram_id)
+
+    if not user:
+        await callback.answer("Пользователь не найден", show_alert=True)
+        return
+
+    if action == "extend":
+        await state.update_data(target_tg_id=telegram_id)
+        await callback.message.edit_text(
+            f"🔄 <b>Продление подписки</b>\n\n"
+            f"👤 {user['first_name']}\n"
+            f"🆔 <code>{telegram_id}</code>\n"
+            f"📧 {user['xui_email']}\n\n"
+            f"На сколько <b>дней</b> продлить?",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Отмена", callback_data="admin_manage_back")]
+            ])
+        )
+        await state.set_state(AdminStates.waiting_extend_days)
+        await callback.answer()
+        return
+
+    if action == "delete":
+        try:
+            async with XUIClient() as xui:
+                try:
+                    await xui.delete_client(user["xui_email"])
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(f"Ошибка удаления из 3x-ui: {e}")
+
+        await delete_user(telegram_id)
+
+        await callback.message.edit_text(
+            f"🗑 <b>Пользователь удалён</b>\n\n"
+            f"👤 {user['first_name']}\n"
+            f"🆔 <code>{telegram_id}</code>\n"
+            f"📧 {user['xui_email']}",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ К списку", callback_data="admin_delete_user")]
+            ])
+        )
+        await callback.answer("Удалён")
+        return
+
+    if action == "reset":
+        await delete_user(telegram_id)
+
+        await callback.message.edit_text(
+            f"♻️ <b>Заявка сброшена</b>\n\n"
+            f"👤 {user['first_name']}\n"
+            f"🆔 <code>{telegram_id}</code>\n\n"
+            f"Пользователь может подать заявку заново.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ К списку", callback_data="admin_reset")]
+            ])
+        )
+        await callback.answer("Сброшено")
+        return
+
+
+@router.message(AdminStates.waiting_extend_days)
+async def admin_extend_days_process(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
         return
 
-    username = message.text.strip().lstrip("@")
-    user = await get_user_by_username(username)
+    try:
+        days = int(message.text.strip())
+        if days < 1 or days > 3650:
+            raise ValueError
+    except ValueError:
+        await message.answer("❌ Введи число от 1 до 3650.")
+        return
 
-    if not user:
-        await message.answer(
-            f"❌ @{username} не найден в базе.",
-            reply_markup=admin_menu()
-        )
+    data = await state.get_data()
+    telegram_id = data.get("target_tg_id")
+
+    if not telegram_id:
+        await message.answer("❌ Ошибка: не найден пользователь")
         await state.clear()
         return
 
-    xui_email = user["xui_email"]
-    telegram_id = user["telegram_id"]
+    user = await get_user(telegram_id)
+    if not user:
+        await message.answer(f"❌ Пользователь {telegram_id} не найден")
+        await state.clear()
+        return
 
-    # Удаляем из 3x-ui
-    xui_ok = False
-    xui_error = None
     try:
         async with XUIClient() as xui:
-            xui_ok = await xui.delete_client(xui_email)
+            new_expiry = await xui.update_expiry(user["xui_email"], days=days)
+
+        await renew_user(telegram_id, new_expires=new_expiry)
+
+        await message.answer(
+            f"✅ <b>Подписка продлена</b>\n\n"
+            f"👤 {user['first_name']}\n"
+            f"📅 Новая дата: {new_expiry.strftime('%d.%m.%Y')}\n"
+            f"⏱ +{days} дней",
+            parse_mode="HTML",
+            reply_markup=admin_menu()
+        )
+
+        try:
+            await message.bot.send_message(
+                telegram_id,
+                f"🎁 <b>Админ продлил твою подписку!</b>\n\n"
+                f"📅 Новая дата: {new_expiry.strftime('%d.%m.%Y')}\n"
+                f"⏱ +{days} дней",
+                parse_mode="HTML"
+            )
+        except Exception:
+            pass
+
+        logger.info(f"✅ Продлено {user['xui_email']} на {days} дней")
+
     except Exception as e:
-        xui_error = str(e)
+        logger.error(f"❌ Ошибка продления: {e}")
+        await message.answer(f"❌ Ошибка: {e}", reply_markup=admin_menu())
 
-    # Удаляем из базы бота
-    await delete_user(telegram_id)
-
-    # Формируем отчёт
-    text = f"🗑 <b>Удаление @{username}</b>\n\n"
-    text += f"📧 Email в 3x-ui: <code>{xui_email}</code>\n"
-    text += f"🆔 Telegram ID: <code>{telegram_id}</code>\n\n"
-
-    if xui_ok:
-        text += "✅ Удалён из 3x-ui\n"
-    elif xui_error:
-        text += f"⚠️ Ошибка 3x-ui: {xui_error}\n"
-    else:
-        text += "⚠️ В 3x-ui клиент не найден (возможно, уже удалён)\n"
-
-    text += "✅ Удалён из базы бота"
-
-    await message.answer(text, reply_markup=admin_menu(), parse_mode="HTML")
     await state.clear()
+    
+
+# ============================================================
+# ПОДМЕНЮ «ПОЛЬЗОВАТЕЛИ»
+# ============================================================
+
+@router.callback_query(F.data == "admin_menu_users")
+async def admin_menu_users_callback(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        return
+    await callback.message.edit_text(
+        "👥 <b>Управление пользователями</b>\n\nВыбери действие:",
+        reply_markup=admin_submenu_users(),
+        parse_mode="HTML"
+    )
+    await callback.answer()
+
+
+# ============================================================
+# СОЗДАНИЕ КЛИЕНТА С КОММЕНТАРИЕМ
+# ============================================================
+
+async def _do_approve(bot, chat_id: int, telegram_id: int, custom_comment: str = None):
+    """Создать клиента в 3x-ui с комментарием.
+
+    Args:
+        custom_comment: текст от админа или None (тогда авто)
+    """
+    user = await get_user(telegram_id)
+    if not user:
+        await bot.send_message(chat_id, f"❌ Пользователь {telegram_id} не найден")
+        return
+
+    # Авто-часть
+    auto_comment = f"TG: {telegram_id}"
+    if user["username"]:
+        auto_comment += f" @{user['username']}"
+
+    # Итоговый comment
+    if custom_comment:
+        comment = f"{custom_comment} | {auto_comment}"
+    else:
+        comment = f"{auto_comment} | bot"
+
+    try:
+        async with XUIClient() as xui:
+            try:
+                sub_id = await xui.add_client(user["xui_email"], comment=comment)
+                await approve_user(telegram_id, sub_id)
+                sub_url = xui.build_sub_url(sub_id)
+            except Exception as e:
+                if "email already in use" in str(e):
+                    base_email = user["xui_email"]
+                    await bot.send_message(
+                        chat_id,
+                        f"⚠️ <b>Email '{base_email}' уже занят в 3x-ui</b>\n\n"
+                        f"👤 {user['first_name']}\n"
+                        f"🆔 <code>{telegram_id}</code>\n\n"
+                        f"Выбери новое имя для клиента:",
+                        parse_mode="HTML",
+                        reply_markup=email_conflict_keyboard(telegram_id, base_email)
+                    )
+                    return
+                else:
+                    raise
+
+        await bot.send_message(
+            chat_id,
+            f"✅ <b>Заявка одобрена</b>\n\n"
+            f"👤 {user['first_name']}\n"
+            f"📧 {user['xui_email']}\n"
+            f"📝 <code>{comment}</code>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ К списку", callback_data="admin_list_requests")]
+            ])
+        )
+
+        await bot.send_message(
+            telegram_id,
+            f"🎉 <b>Твоя подписка готова!</b>\n\n"
+            f"🔗 Ссылка:\n<code>{sub_url}</code>\n\n"
+            f"📱 Лимит: 3 IP одновременно\n"
+            f"⏳ Срок: 30 дней. Продлить можно через «🔑 Моя подписка».\n\n"
+            f"{DONATE_TEXT}",
+            parse_mode="HTML",
+            reply_markup=subscription_keyboard()
+        )
+
+        logger.info(f"✅ Одобрен {user['xui_email']} | comment={comment}")
+
+    except Exception as e:
+        logger.error(f"❌ Ошибка при одобрении {user.get('xui_email')}: {e}")
+        await bot.send_message(chat_id, f"❌ Ошибка: {e}")
+
+
+@router.message(AdminStates.waiting_comment)
+async def comment_input_process(message: Message, state: FSMContext):
+    """Админ ввёл кастомный комментарий."""
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    data = await state.get_data()
+    telegram_id = data.get("approve_tg_id")
+
+    if not telegram_id:
+        await message.answer("❌ Ошибка: не найден пользователь")
+        await state.clear()
+        return
+
+    custom_comment = message.text.strip()
+    if not custom_comment:
+        # Пустая строка — считаем как «Пропустить»
+        custom_comment = None
+
+    await _do_approve(message.bot, message.chat.id, telegram_id, custom_comment)
+    await state.clear()
+
+
+@router.callback_query(F.data.startswith("req_skip_comment:"))
+async def skip_comment_callback(callback: CallbackQuery, state: FSMContext):
+    """Админ нажал «Пропустить»."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    telegram_id = int(callback.data.split(":")[1])
+    await _do_approve(callback.bot, callback.message.chat.id, telegram_id, None)
+    await state.clear()
+    await callback.answer()
