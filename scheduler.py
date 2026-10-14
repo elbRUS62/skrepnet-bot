@@ -47,11 +47,9 @@ async def check_subscriptions(bot: Bot):
 
             await bot.send_message(
                 user["telegram_id"],
-                f"⏳ Твоя подписка SkrepNet истекает через 3 дня.\n\n"
-                f"{progress_line}\n\n"
-                f"Чтобы продолжить пользоваться — зайди и продли её.\n"
-                f"Это займёт 5 секунд.\n\n"
-                f"{DONATE_TEXT}",
+                f"⏳ Твоя подписка истекает через 3 дня.\n"
+                f"Продли, чтобы не остаться без VPN.\n\n"
+                f"{progress_line}",
                 reply_markup=renew_keyboard(),
                 disable_notification=True
             )
@@ -66,11 +64,9 @@ async def check_subscriptions(bot: Bot):
 
             await bot.send_message(
                 user["telegram_id"],
-                f"🔔 Сегодня последний день твоей подписки SkrepNet!\n\n"
-                f"После полуночи доступ отключится. Продли прямо сейчас, "
-                f"чтобы не остаться без VPN.\n\n"
-                f"{progress_line}\n\n"
-                f"{DONATE_TEXT}",
+                f"🔔 Сегодня последний день подписки!\n"
+                f"После полуночи доступ отключится.\n\n"
+                f"{progress_line}",
                 reply_markup=renew_keyboard(),
                 disable_notification=True
             )
