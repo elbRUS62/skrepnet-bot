@@ -9,6 +9,10 @@ ADMIN_IDS = [int(x.strip()) for x in os.getenv("ADMIN_ID", "").split(",") if x.s
 ADMIN_ID = ADMIN_IDS[0] if ADMIN_IDS else 0  # первый админ, для совместимости
 BOT_USERNAME = os.getenv("BOT_USERNAME", "")
 
+# Branding
+BOT_NAME = os.getenv("BOT_NAME", "SkrepNet")
+SUPPORT_USERNAME = os.getenv("SUPPORT_USERNAME", "SkrepNet_support")
+
 # 3x-ui Panel
 XUI_API_TOKEN = os.getenv("XUI_API_TOKEN")
 XUI_HOST = os.getenv("XUI_HOST")

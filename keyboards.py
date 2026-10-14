@@ -5,7 +5,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton,
     KeyboardButtonRequestUsers
 )
-from config import DONATE_URL
+from config import DONATE_URL, BOT_NAME, SUPPORT_USERNAME
 
 
 def main_menu():
@@ -29,7 +29,6 @@ def admin_menu():
             [KeyboardButton(text="👥 Пригласить друга"), KeyboardButton(text="🆘 Техподдержка")],
             [KeyboardButton(text="➕ Добавить без Telegram"), KeyboardButton(text="📚 Документы")],
             [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🛠 Управление")],
-            [KeyboardButton(text="📋 История обновлений")]
         ],
         resize_keyboard=True,
         is_persistent=True
@@ -112,7 +111,7 @@ def subscription_keyboard():
 
 
 def share_keyboard(bot_username: str, telegram_id: int):
-    share_text = "Присоединяйся к SkrepNet — бесплатный VPN для своих!"
+    share_text = f"Присоединяйся к {BOT_NAME} — бесплатный VPN!"
     share_url = f"https://t.me/share/url?url=https://t.me/{bot_username}?start=ref_{telegram_id}&text={share_text}"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📤 Поделиться с друзьями", url=share_url)]
@@ -136,12 +135,6 @@ def back_to_connect_keyboard():
     ])
 
 
-def changelog_keyboard():
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 Показать историю", callback_data="show_changelog")]
-    ])
-
-
 def terms_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Согласен", callback_data="accept_terms")],
@@ -156,7 +149,7 @@ def admin_panel_keyboard():
 
 def support_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🆘 Техподдержка", url="https://t.me/skrepnet_support")]
+        [InlineKeyboardButton(text="🆘 Техподдержка", url=f"https://t.me/{SUPPORT_USERNAME}")]
     ])
 
 def documents_keyboard():
@@ -206,7 +199,7 @@ def invite_no_tg_keyboard():
 
 def invite_share_keyboard(invite_url: str):
     """Кнопка «Поделиться» с готовой ссылкой."""
-    share_text = "Присоединяйся к SkrepNet — бесплатный VPN!"
+    share_text = f"Присоединяйся к {BOT_NAME} — бесплатный VPN!"
     share_url = f"https://t.me/share/url?url={invite_url}&text={share_text}"
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📤 Поделиться ссылкой", url=share_url)]

@@ -1,6 +1,7 @@
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 
+from config import BOT_NAME
 from keyboards import connect_keyboard, back_to_connect_keyboard
 
 router = Router()
@@ -9,7 +10,7 @@ router = Router()
 @router.callback_query(F.data == "connect_help")
 async def connect_help(callback: CallbackQuery):
     await callback.message.edit_text(
-        "📖 <b>Как подключиться к SkrepNet</b>\n\n"
+        f"📖 <b>Как подключиться к {BOT_NAME}</b>\n\n"
         "Выбери своё устройство:",
         reply_markup=connect_keyboard(),
         parse_mode="HTML"

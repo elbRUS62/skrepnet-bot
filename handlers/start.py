@@ -6,7 +6,7 @@ from aiogram import Router, F
 from aiogram.types import Message
 from aiogram.filters import CommandStart, CommandObject
 
-from config import ADMIN_IDS
+from config import ADMIN_IDS, BOT_NAME
 from database import (
     get_user, create_user_request, increment_invites, add_invite,
     is_in_waitlist, get_waitlist_position,
@@ -115,7 +115,7 @@ async def _show_start(message: Message):
     else:
         await message.answer(
             f"👋 Привет, {message.from_user.first_name}!\n\n"
-            f"Это бот для выдачи бесплатных подписок SkrepNet.\n\n"
+            f"Это бот для выдачи бесплатных подписок {BOT_NAME}.\n\n"
             f"{progress_line}\n\n"
             f"⚠️ Проект бесплатный, но сервер стоит ~3000 ₽/мес. "
             f"Если хочешь помочь — жми «❤️ Поддержать проект».\n\n"

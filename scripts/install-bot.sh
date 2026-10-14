@@ -71,6 +71,8 @@ header "Telegram"
 read -p "  BOT_TOKEN (от @BotFather): " BOT_TOKEN
 read -p "  ADMIN_ID (твой Telegram ID, можно несколько через запятую): " ADMIN_ID
 read -p "  BOT_USERNAME (без @, например skrepnet_bot): " BOT_USERNAME
+read -p "  BOT_NAME (отображаемое имя бота, например SkrepNet): " BOT_NAME
+read -p "  SUPPORT_USERNAME (без @, например SkrepNet_support): " SUPPORT_USERNAME
 
 header "3x-ui Панель"
 read -p "  XUI_HOST (например https://ru-skrepnet.duckdns.org:3775): " XUI_HOST
@@ -124,6 +126,8 @@ cat > .env <<EOF
 BOT_TOKEN=$BOT_TOKEN
 ADMIN_ID=$ADMIN_ID
 BOT_USERNAME=$BOT_USERNAME
+BOT_NAME=$BOT_NAME
+SUPPORT_USERNAME=$SUPPORT_USERNAME
 
 # 3x-ui Panel
 XUI_API_TOKEN=$XUI_API_TOKEN

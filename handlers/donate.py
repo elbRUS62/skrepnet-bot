@@ -3,7 +3,7 @@ import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery
 
-from config import ADMIN_IDS, DONATE_TEXT, DONATE_URL, BOT_USERNAME
+from config import ADMIN_IDS, DONATE_TEXT, DONATE_URL, BOT_USERNAME, BOT_NAME, SUPPORT_USERNAME
 from database import get_user
 from keyboards import donate_keyboard, donate_stars_keyboard, share_keyboard, support_keyboard
 
@@ -45,11 +45,11 @@ async def back_to_donate(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("stars_"))
 async def donate_stars_invoice(callback: CallbackQuery):
     amount = int(callback.data.split("_")[1])
-    prices = [LabeledPrice(label="Поддержка SkrepNet", amount=amount)]
+    prices = [LabeledPrice(label=f"Поддержка {BOT_NAME}", amount=amount)]
 
     await callback.bot.send_invoice(
         chat_id=callback.from_user.id,
-        title="Поддержка SkrepNet",
+        title=f"Поддержка {BOT_NAME}",
         description=f"Донат {amount} ⭐ на оплату сервера",
         payload=f"donate_{callback.from_user.id}_{amount}",
         provider_token="",
@@ -124,10 +124,10 @@ async def invite_friend(message: Message):
 @router.message(F.text == "🆘 Техподдержка")
 async def support_button(message: Message):
     await message.answer(
-        "🆘 <b>Техподдержка SkrepNet</b>\n\n"
+        f"🆘 <b>Техподдержка {BOT_NAME}</b>\n\n"
         "Если у тебя возникли вопросы, проблемы с подключением "
         "или ты хочешь сообщить о сбое — напиши нам.\n\n"
-        "📢 Канал техподдержки: @skrepnet_support",
+        f"📢 Канал техподдержки: @{SUPPORT_USERNAME}",
         reply_markup=support_keyboard(),
         parse_mode="HTML"
     )

@@ -7,7 +7,7 @@ from aiogram import Router, F, Bot
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.context import FSMContext
 
-from config import ADMIN_IDS, DONATE_TEXT, DB_PATH, SUB_BASE_URL, SUB_PATH, MAX_USERS
+from config import ADMIN_IDS, DONATE_TEXT, DB_PATH, SUB_BASE_URL, SUB_PATH, MAX_USERS, BOT_NAME, SUPPORT_USERNAME
 from database import (
     get_user, create_user_request, approve_user, renew_user,
     add_to_waitlist, is_in_waitlist, get_waitlist_position,
@@ -166,7 +166,7 @@ async def accept_terms(callback: CallbackQuery):
         except Exception as e:
             logger.error(f"❌ Ошибка при создании реферала: {e}")
             await callback.message.edit_text(
-                f"❌ Ошибка. Обратись в поддержку: @SkrepNet_support"
+                f"❌ Ошибка. Обратись в поддержку: @{SUPPORT_USERNAME}"
             )
 
     else:
@@ -391,7 +391,7 @@ async def renew_callback(callback: CallbackQuery):
 @router.message(F.text == "📚 Документы")
 async def show_documents_menu(message: Message):
     await message.answer(
-        "📚 <b>Документы SkrepNet</b>\n\n"
+        f"📚 <b>Документы {BOT_NAME}</b>\n\n"
         "Выбери документ для просмотра:",
         reply_markup=documents_keyboard(),
         parse_mode="HTML"

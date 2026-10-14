@@ -4,7 +4,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from config import ADMIN_IDS
+from config import ADMIN_IDS, BOT_NAME
 from database import get_user, create_invite_link, increment_invites, add_invite
 from keyboards import invite_no_tg_keyboard, invite_share_keyboard, main_menu
 
@@ -59,7 +59,7 @@ async def handle_shared_user(message: Message):
 
     existing = await get_user(friend_id)
     if existing and existing["status"] == "active":
-        await message.answer(f"❌ @{friend_username or friend_id} уже в SkrepNet")
+        await message.answer(f"❌ @{friend_username or friend_id} уже в {BOT_NAME}")
         return
 
     token = await create_invite_link(

@@ -8,7 +8,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.filters import Command
 
-from config import ADMIN_IDS, DB_PATH, DONATE_TEXT, MAX_USERS
+from config import ADMIN_IDS, DB_PATH, DONATE_TEXT, MAX_USERS, BOT_NAME
 from database import (
     get_user, get_user_by_username, is_admin, add_admin, remove_admin,
     get_all_admins, delete_user, renew_user, approve_user,
@@ -66,7 +66,7 @@ async def cmd_stats(message: Message):
     free_slots = max(MAX_USERS - active, 0)
 
     text = (
-        f"📊 <b>Статистика SkrepNet</b>\n\n"
+        f"📊 <b>Статистика {BOT_NAME}</b>\n\n"
         f"👥 <b>Пользователи:</b>\n"
         f"• Всего: {total}\n"
         f"• Активных: {active}\n"
