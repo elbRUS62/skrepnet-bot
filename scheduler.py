@@ -1,5 +1,6 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from aiogram import Bot
+from handlers.progress import render_progress
 
 from database import (
     get_expiring_users, get_expired_today, mark_notified,
@@ -42,13 +43,14 @@ async def check_subscriptions(bot: Bot):
     # За 3 дня
     for user in await get_expiring_users(3):
         try:
+            progress_line = await render_progress(short=True)
+
             await bot.send_message(
                 user["telegram_id"],
-                f"⏳ Привет! Твоя подписка SkrepNet истекает через 3 дня.\n\n"
-                f"Чтобы продолжить пользоваться — зайди и продли её. "
+                f"⏳ Твоя подписка SkrepNet истекает через 3 дня.\n\n"
+                f"{progress_line}\n\n"
+                f"Чтобы продолжить пользоваться — зайди и продли её.\n"
                 f"Это займёт 5 секунд.\n\n"
-                f"💡 Проект бесплатный, но сервер стоит ~3000 ₽/мес. "
-                f"Если есть возможность — поддержи ❤️\n\n"
                 f"{DONATE_TEXT}",
                 reply_markup=renew_keyboard(),
                 disable_notification=True
@@ -60,13 +62,14 @@ async def check_subscriptions(bot: Bot):
     # В день окончания
     for user in await get_expired_today():
         try:
+            progress_line = await render_progress(short=True)
+
             await bot.send_message(
                 user["telegram_id"],
                 f"🔔 Сегодня последний день твоей подписки SkrepNet!\n\n"
                 f"После полуночи доступ отключится. Продли прямо сейчас, "
                 f"чтобы не остаться без VPN.\n\n"
-                f"💡 И помни: проект держится только на поддержке. "
-                f"Если можешь — помоги серверу ❤️\n\n"
+                f"{progress_line}\n\n"
                 f"{DONATE_TEXT}",
                 reply_markup=renew_keyboard(),
                 disable_notification=True

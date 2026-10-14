@@ -28,6 +28,7 @@ SUBSCRIPTION_DAYS = int(os.getenv("SUBSCRIPTION_DAYS", "30"))
 # Donate
 DONATE_URL = os.getenv("DONATE_URL")
 DONATE_TEXT = os.getenv("DONATE_TEXT")
+SERVER_COST = int(os.getenv("SERVER_COST", "3000"))
 
 # Database
 DB_PATH = os.getenv("DB_PATH", "skrepnet.db")

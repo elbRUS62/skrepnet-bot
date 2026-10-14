@@ -31,8 +31,7 @@ async def cmd_start_ref(message: Message, command: CommandObject):
 
     existing = await get_user(message.from_user.id)
 
-    # Если пользователь НЕ в базе и пришёл по рефералке — просто показываем старт
-    # invited_by сохраним в accept_terms через deep_link
+    # Если пользователь НЕ в базе и пришёл по рефералке
     if existing is None and invited_by:
         # Запоминаем в базе со статусом 'new'
         async with aiosqlite.connect(DB_PATH) as db:
@@ -70,6 +69,7 @@ async def cmd_start_ref(message: Message, command: CommandObject):
 
     await _show_start(message)
 
+
 @router.message(CommandStart())
 async def cmd_start(message: Message):
     await _show_start(message)
@@ -80,10 +80,15 @@ async def _show_start(message: Message):
     admin = message.from_user.id in ADMIN_IDS
     menu = admin_menu() if admin else main_menu()
 
+    # Прогресс донатов
+    from .progress import render_progress
+    progress_line = await render_progress(short=True)
+
     if user and user["status"] == "active":
         await message.answer(
             f"👋 С возвращением, {message.from_user.first_name}!\n\n"
-            f"У тебя активная подписка. Проверить статус — «🔑 Моя подписка».",
+            f"У тебя активная подписка. Проверить статус — «🔑 Моя подписка».\n\n"
+            f"{progress_line}",
             reply_markup=menu
         )
     elif user and user["status"] == "pending":
@@ -95,6 +100,7 @@ async def _show_start(message: Message):
         await message.answer(
             f"👋 Привет, {message.from_user.first_name}!\n\n"
             f"Это бот для выдачи бесплатных подписок SkrepNet.\n\n"
+            f"{progress_line}\n\n"
             f"⚠️ Проект бесплатный, но сервер стоит ~3000 ₽/мес. "
             f"Если хочешь помочь — жми «❤️ Поддержать проект».\n\n"
             f"📢 Хочешь помочь проекту расти? Жми «👥 Пригласить друга» — "

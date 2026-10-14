@@ -54,7 +54,19 @@ async def init_db():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS donations (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT,
+                amount REAL NOT NULL,
+                currency TEXT DEFAULT 'RUB',
+                message TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
         await db.commit()
+
+
 
 
 # ============================================================
@@ -389,3 +401,51 @@ async def count_users_by_statuses(statuses: list) -> int:
         """, statuses) as cur:
             row = await cur.fetchone()
             return row[0] if row else 0
+
+
+# ============================================================
+# ДОНАТЫ
+# ============================================================
+
+async def add_donation(username: str, amount: float, currency: str = "RUB", message: str = None):
+    """Записать донат в БД."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO donations (username, amount, currency, message)
+            VALUES (?, ?, ?, ?)
+        """, (username, amount, currency, message))
+        await db.commit()
+
+
+async def get_donations_total(currency: str = "RUB") -> float:
+    """Сумма всех донатов за текущий месяц в указанной валюте."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("""
+            SELECT COALESCE(SUM(amount), 0)
+            FROM donations
+            WHERE currency = ?
+            AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
+        """, (currency,)) as cur:
+            row = await cur.fetchone()
+            return float(row[0]) if row else 0.0
+
+
+async def get_donations_count() -> int:
+    """Сколько донатов за текущий месяц."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("""
+            SELECT COUNT(*) FROM donations
+            WHERE strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
+        """) as cur:
+            row = await cur.fetchone()
+            return int(row[0]) if row else 0
+
+
+async def clear_old_donations():
+    """Удалить донаты старше 2 месяцев."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            DELETE FROM donations
+            WHERE created_at < datetime('now', '-2 months')
+        """)
+        await db.commit()

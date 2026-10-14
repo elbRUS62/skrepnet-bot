@@ -71,6 +71,21 @@ class DonationAlertsCentrifugo:
 
             logger.info(f"Новый донат: {username} - {amount} {currency}")
             logger.info(f"Admin IDs: {self.admin_ids}")
+            
+            
+            # Записываем донат в БД
+            try:
+                from database import add_donation
+                await add_donation(
+                    username=username,
+                    amount=float(amount),
+                    currency=currency,
+                    message=message or None
+                )
+                logger.info(f"✅ Донат записан в БД: {username} - {amount} {currency}")
+            except Exception as e:
+                logger.error(f"❌ Ошибка записи доната в БД: {e}")
+
 
             text = (
                 f"💰 <b>Новый донат!</b>\n"
