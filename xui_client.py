@@ -1,13 +1,16 @@
 import hashlib
 import aiohttp
-import random
-import string
+import logging
 from datetime import datetime, timedelta
+
 from config import (
     XUI_HOST, XUI_BASE_PATH, XUI_API_TOKEN,
     INBOUND_GB, LIMIT_IP, SUBSCRIPTION_DAYS,
-    SUB_BASE_URL, SUB_PATH
+    SUB_BASE_URL, SUB_PATH, BOT_NAME
 )
+
+logger = logging.getLogger(__name__)
+
 
 class XUIClient:
     def __init__(self):
@@ -41,7 +44,7 @@ class XUIClient:
             return await resp.json()
 
     async def add_client(self, email: str, days: int = None, comment: str = None) -> str:
-        """Создать клиента в 3x-ui.
+        """Создать клиента в 3x-ui и добавить в группу BOT_NAME.
 
         Args:
             email: email клиента (используется как имя)
@@ -71,6 +74,18 @@ class XUIClient:
         result = await self._post("/panel/api/clients/add", payload)
         if not result.get("success"):
             raise Exception(f"Add client failed: {result}")
+
+        # Добавляем в группу с именем бота (BOT_NAME)
+        try:
+            await self._post("/panel/api/clients/groups/bulkAdd", {
+                "emails": [email],
+                "group": BOT_NAME
+            })
+            logger.info(f"✅ {email} добавлен в группу {BOT_NAME}")
+        except Exception as e:
+            # Не критично — клиент уже создан, просто не в группе
+            logger.warning(f"⚠️ Не удалось добавить {email} в группу {BOT_NAME}: {e}")
+
         return sub_id
 
     async def get_client(self, email: str) -> dict:
@@ -129,7 +144,7 @@ class XUIClient:
         """Удалить клиента из 3x-ui по email."""
         result = await self._post(f"/panel/api/clients/del/{email}")
         return result.get("success", False)
-        
+
     def build_sub_url(self, sub_id: str) -> str:
         """Собрать ссылку на подписку."""
         return f"{SUB_BASE_URL}{SUB_PATH}{sub_id}"
