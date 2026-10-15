@@ -13,6 +13,9 @@
 - 🆘 **Поддержка:** `@your_support` (настраивается через `SUPPORT_USERNAME`)
 - 📌 **Версия:** v2.0.0 ([CHANGELOG](CHANGELOG.md))
 
+> **Живой пример:** [@skrepnet_bot](https://t.me/skrepnet_bot) (BOT_NAME=`SkrepNet`, SUPPORT_USERNAME=`SkrepNet_support`).  
+> Это **шаблон** — разверните **свой** бот с **другим** именем, просто изменив `.env`.
+
 </div>
 
 ---
