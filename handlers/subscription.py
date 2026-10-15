@@ -17,8 +17,7 @@ from database import (
 from xui_client import XUIClient
 from keyboards import (
     admin_approve_keyboard, subscription_keyboard, donate_keyboard,
-    documents_keyboard, terms_keyboard, back_to_documents_keyboard,
-    main_menu, admin_menu, email_conflict_keyboard, waitlist_keyboard,
+    email_conflict_keyboard, waitlist_keyboard,
 )
 from .utils import sanitize_email, make_qr_image
 from .states import RegStates, AdminStates
@@ -30,55 +29,6 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # ЗАЯВКА НА ПОДПИСКУ
 # ============================================================
-
-@router.message(F.text == "📦 Получить подписку")
-async def request_subscription(message: Message, state: FSMContext):
-    user = await get_user(message.from_user.id)
-
-    if user and user["status"] == "active":
-        await message.answer("У тебя уже есть активная подписка. Используй «🔑 Моя подписка».")
-        return
-
-    if user and user["status"] == "pending":
-        await message.answer("⏳ Заявка уже отправлена. Жди одобрения админа.")
-        return
-
-    # Проверяем лимит пользователей
-    if await is_limit_reached(MAX_USERS):
-        # Уже в листе ожидания?
-        if await is_in_waitlist(message.from_user.id):
-            position = await get_waitlist_position(message.from_user.id)
-            await message.answer(
-                f"⏳ <b>Ты в листе ожидания</b>\n\n"
-                f"📋 Твоя позиция: <b>{position}</b>\n\n"
-                f"Мы напишем, когда освободится место.",
-                parse_mode="HTML"
-            )
-            return
-
-        # Не в листе — предлагаем встать
-        active = await count_active_users()
-        await message.answer(
-            f"⚠️ <b>Свободных мест нет</b>\n\n"
-            f"📊 Занято: {active} из {MAX_USERS}\n\n"
-            f"Ты можешь встать в лист ожидания — мы напишем тебе, "
-            f"как только освободится место.",
-            parse_mode="HTML",
-            reply_markup=waitlist_keyboard()
-        )
-        return
-
-    await message.answer(
-        "📜 <b>Для получения подписки ознакомься с документами:</b>\n\n"
-        "1. 📜 Правила использования\n"
-        "2. 🔒 Политика конфиденциальности\n"
-        "3. 📋 Пользовательское соглашение\n\n"
-        "Нажимая «✅ Я согласен со всеми условиями», ты подтверждаешь, "
-        "что ознакомился со всеми документами.",
-        reply_markup=terms_keyboard(),
-        parse_mode="HTML"
-    )
-
 
 @router.callback_query(F.data == "accept_terms")
 async def accept_terms(callback: CallbackQuery):
@@ -94,12 +44,10 @@ async def accept_terms(callback: CallbackQuery):
     invited_by = user["invited_by"] if user else None
     is_referral = invited_by is not None
 
-    # Блокируем только НЕ-рефералов
     if user and user["status"] == "pending" and not is_referral:
         await callback.answer("Заявка уже отправлена", show_alert=True)
         return
 
-    # Создаём запись в базе
     await create_user_request(
         callback.from_user.id,
         callback.from_user.username or "",
@@ -109,7 +57,6 @@ async def accept_terms(callback: CallbackQuery):
     )
 
     if is_referral:
-        # АВТООДОБРЕНИЕ для рефералов
         try:
             async with XUIClient() as xui:
                 auto_comment = f"TG: {callback.from_user.id}"
@@ -138,7 +85,6 @@ async def accept_terms(callback: CallbackQuery):
                 parse_mode="HTML"
             )
 
-            # Получаем данные пригласившего
             inviter = await get_user(invited_by)
             if inviter:
                 inviter_username = f"@{inviter['username']}" if inviter["username"] else ""
@@ -147,7 +93,6 @@ async def accept_terms(callback: CallbackQuery):
             else:
                 inviter_name = str(invited_by)
 
-            # Уведомляем админов
             for admin_id in ADMIN_IDS:
                 try:
                     await callback.bot.send_message(
@@ -170,7 +115,6 @@ async def accept_terms(callback: CallbackQuery):
             )
 
     else:
-        # РУЧНОЕ ОДОБРЕНИЕ для остальных
         for admin_id in ADMIN_IDS:
             try:
                 await callback.bot.send_message(
@@ -204,7 +148,6 @@ async def decline_terms(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("approve:"))
 async def approve_callback(callback: CallbackQuery, state: FSMContext):
-    """Одобрение заявки из уведомления — сначала спрашиваем комментарий."""
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
@@ -229,7 +172,6 @@ async def approve_callback(callback: CallbackQuery, state: FSMContext):
         await callback.answer(f"Неверный статус: {user['status']}", show_alert=True)
         return
 
-    # Авто-часть комментария для подсказки
     auto_comment = f"TG: {telegram_id}"
     if user["username"]:
         auto_comment += f" @{user['username']}"
@@ -249,11 +191,34 @@ async def approve_callback(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(
                 text="⏭ Пропустить",
                 callback_data=f"approve_skip_comment:{telegram_id}"
+            )],
+            [InlineKeyboardButton(
+                text="❌ Отмена",
+                callback_data="approve_comment_cancel"
             )]
         ])
     )
     await state.set_state(AdminStates.waiting_comment)
     await callback.answer()
+
+
+@router.callback_query(F.data == "approve_comment_cancel")
+async def approve_comment_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена ввода комментария из уведомления о новой заявке."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    await state.clear()
+    await callback.message.edit_text(
+        "❌ Одобрение отменено.\n\n"
+        "Заявка осталась в статусе <b>pending</b> — можно одобрить позже через «🛠 Управление → 📋 Список заявок».",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")]
+        ])
+    )
+    await callback.answer("Отменено")
 
 
 @router.callback_query(F.data.startswith("reject:"))
@@ -268,52 +233,8 @@ async def reject_callback(callback: CallbackQuery):
 
 
 # ============================================================
-# МОЯ ПОДПИСКА И ПРОДЛЕНИЕ
+# ПРОДЛЕНИЕ И QR
 # ============================================================
-
-@router.message(F.text == "🔑 Моя подписка")
-async def my_subscription(message: Message):
-    user = await get_user(message.from_user.id)
-
-    if not user or user["status"] != "active":
-        await message.answer("У тебя нет активной подписки. Нажми «📦 Получить подписку».")
-        return
-
-    async with XUIClient() as xui:
-        sub_url = xui.build_sub_url(user["sub_id"])
-        client = await xui.get_client(user["xui_email"])
-
-        expiry = client.get("expiryTime", 0)
-        if expiry > 0:
-            exp_dt = datetime.fromtimestamp(expiry / 1000)
-            exp_date = exp_dt.strftime("%d.%m.%Y")
-            days_left = (exp_dt - datetime.now()).days
-            if days_left < 0:
-                status_line = f"⚠️ Истекла {exp_date}"
-            elif days_left <= 3:
-                status_line = f"⏳ Истекает через {days_left} дн. ({exp_date})"
-            else:
-                status_line = f"📅 До {exp_date} ({days_left} дн.)"
-        else:
-            status_line = "📅 Бессрочно"
-
-        traffic_up = client.get("up", 0) / (1024**3)
-        traffic_down = client.get("down", 0) / (1024**3)
-
-    await message.answer(
-        f"🔑 Твоя подписка\n\n"
-        f"🔗 Ссылка:\n`{sub_url}`\n\n"
-        f"{status_line}\n"
-        f"📱 Лимит: 3 IP одновременно\n"
-        f"📊 Трафик: ↓{traffic_down:.2f} GB / ↑{traffic_up:.2f} GB\n\n"
-        f"Хочешь продлить — жми «🔄 Продлить».\n"
-        f"Нужен QR-код? Жми «📷 QR-код».\n"
-        f"Первый раз подключаешься? Жми «📖 Как подключиться».\n\n"
-        f"{DONATE_TEXT}",
-        reply_markup=subscription_keyboard(),
-        parse_mode="Markdown"
-    )
-
 
 @router.callback_query(F.data == "show_qr")
 async def show_qr_callback(callback: CallbackQuery):
@@ -327,10 +248,29 @@ async def show_qr_callback(callback: CallbackQuery):
 
     try:
         qr_file = make_qr_image(sub_url)
+
+        # Удаляем старое сообщение с меню
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+
+        # Отправляем QR + только 2 кнопки
         await callback.message.answer_photo(
             photo=qr_file,
-            caption="📷 QR-код для быстрого подключения\n\n"
-                    "Открой Happ → «+» → «Сканировать QR»"
+            caption="📷 <b>QR-код для быстрого подключения</b>\n\n"
+                    "Открой Happ → «+» → «Сканировать QR»",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="📖 Как подключиться",
+                    callback_data="connect_help"
+                )],
+                [InlineKeyboardButton(
+                    text="🏠 В главное меню",
+                    callback_data="back_to_main"
+                )],
+            ])
         )
         await callback.answer()
     except Exception as e:
@@ -350,11 +290,9 @@ async def renew_callback(callback: CallbackQuery):
         async with XUIClient() as xui:
             new_expiry = await xui.update_expiry(user["xui_email"])
 
-            # Увеличиваем счётчик продлений
             new_count = await increment_renew_count(callback.from_user.id)
             date_str = new_expiry.strftime("%d.%m.%Y")
 
-            # Строим comment: база + продление
             base_comment = f"TG: {callback.from_user.id}"
             if user["username"]:
                 base_comment += f" @{user['username']}"
@@ -362,7 +300,6 @@ async def renew_callback(callback: CallbackQuery):
 
             comment = f"{base_comment} | продлён ×{new_count} ({date_str})"
 
-            # Обновляем comment в 3x-ui
             try:
                 await xui.update_comment(user["xui_email"], comment)
                 logger.info(f"✅ Comment обновлён: {comment}")
@@ -385,38 +322,11 @@ async def renew_callback(callback: CallbackQuery):
 
 
 # ============================================================
-# ДОКУМЕНТЫ (в любое время)
-# ============================================================
-
-@router.message(F.text == "📚 Документы")
-async def show_documents_menu(message: Message):
-    await message.answer(
-        f"📚 <b>Документы {BOT_NAME}</b>\n\n"
-        "Выбери документ для просмотра:",
-        reply_markup=documents_keyboard(),
-        parse_mode="HTML"
-    )
-
-
-@router.callback_query(F.data == "back_to_main")
-async def back_to_main(callback: CallbackQuery):
-    is_admin = callback.from_user.id in ADMIN_IDS
-    menu = admin_menu() if is_admin else main_menu()
-
-    await callback.message.delete()
-    await callback.message.answer(
-        "🏠 Главное меню",
-        reply_markup=menu
-    )
-    await callback.answer()
-
-# ============================================================
-# ОБРАБОТКА КОНФЛИКТА EMAIL (email already in use)
+# КОНФЛИКТ EMAIL
 # ============================================================
 
 @router.callback_query(F.data.startswith("retry_email:"))
 async def retry_email_callback(callback: CallbackQuery):
-    """Админ выбрал новое имя для клиента."""
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
@@ -444,7 +354,6 @@ async def retry_email_callback(callback: CallbackQuery):
             await approve_user(telegram_id, sub_id)
             sub_url = xui.build_sub_url(sub_id)
 
-        # Обновляем email в БД
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute(
                 "UPDATE users SET xui_email = ? WHERE telegram_id = ?",
@@ -457,7 +366,10 @@ async def retry_email_callback(callback: CallbackQuery):
             f"👤 {user['first_name']}\n"
             f"📧 {new_email}\n"
             f"🔗 subId: <code>{sub_id}</code>",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")]
+            ])
         )
 
         await callback.bot.send_message(
@@ -482,7 +394,6 @@ async def retry_email_callback(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("manual_email:"))
 async def manual_email_start(callback: CallbackQuery, state: FSMContext):
-    """Админ хочет ввести email вручную."""
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
@@ -495,15 +406,36 @@ async def manual_email_start(callback: CallbackQuery, state: FSMContext):
         f"🆔 Telegram ID: <code>{telegram_id}</code>\n\n"
         f"Только латиница, цифры, <code>_</code> и <code>-</code>.\n"
         f"Например: <code>Ilya_new</code>",
-        parse_mode="HTML"
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="❌ Отмена", callback_data="manual_email_cancel")]
+        ])
     )
     await state.set_state(AdminStates.waiting_custom_email)
     await callback.answer()
 
 
+@router.callback_query(F.data == "manual_email_cancel")
+async def manual_email_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена ручного ввода email."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    await state.clear()
+    await callback.message.edit_text(
+        "❌ Ввод email отменён.\n\n"
+        "Можешь попробовать снова через карточку заявки.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")]
+        ])
+    )
+    await callback.answer("Отменено")
+
+
 @router.message(AdminStates.waiting_custom_email)
 async def manual_email_process(message: Message, state: FSMContext):
-    """Обработка введённого вручную email."""
     if message.from_user.id not in ADMIN_IDS:
         return
 
@@ -511,24 +443,36 @@ async def manual_email_process(message: Message, state: FSMContext):
     telegram_id = data.get("conflict_tg_id")
 
     if not telegram_id:
-        await message.answer("❌ Ошибка: не найден Telegram ID")
+        await message.answer(
+            "❌ Ошибка: не найден Telegram ID",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")]
+            ])
+        )
         await state.clear()
         return
 
     new_email = message.text.strip()
 
-    # Валидация
     if not re.match(r'^[a-zA-Z0-9_\-]{1,64}$', new_email):
         await message.answer(
             "❌ Неверный формат. Только латиница, цифры, <code>_</code> и <code>-</code>.\n\n"
-            "Попробуй ещё раз или отправь /cancel.",
-            parse_mode="HTML"
+            "Попробуй ещё раз или нажми «Отмена».",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="❌ Отмена", callback_data="manual_email_cancel")]
+            ])
         )
         return
 
     user = await get_user(telegram_id)
     if not user:
-        await message.answer(f"❌ Пользователь {telegram_id} не найден")
+        await message.answer(
+            f"❌ Пользователь {telegram_id} не найден",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")]
+            ])
+        )
         await state.clear()
         return
 
@@ -554,7 +498,10 @@ async def manual_email_process(message: Message, state: FSMContext):
             f"✅ <b>Клиент создан</b>\n\n"
             f"📧 {new_email}\n"
             f"🔗 subId: <code>{sub_id}</code>",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")]
+            ])
         )
 
         await message.bot.send_message(
@@ -578,7 +525,6 @@ async def manual_email_process(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("cancel_email:"))
 async def cancel_email_callback(callback: CallbackQuery):
-    """Отмена заявки из-за конфликта email."""
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
@@ -594,7 +540,6 @@ async def cancel_email_callback(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("use_existing:"))
 async def use_existing_email_callback(callback: CallbackQuery):
-    """Админ решил использовать существующего клиента с тем же email."""
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
@@ -628,7 +573,10 @@ async def use_existing_email_callback(callback: CallbackQuery):
             f"👤 {user['first_name']}\n"
             f"📧 {existing_email}\n"
             f"🔗 subId: <code>{sub_id}</code>",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")]
+            ])
         )
 
         await callback.bot.send_message(
@@ -656,7 +604,6 @@ async def use_existing_email_callback(callback: CallbackQuery):
 # ============================================================
 
 async def _do_approve_from_notification(bot, chat_id: int, telegram_id: int, custom_comment: str = None):
-    """Создать клиента из уведомления с комментарием."""
     user = await get_user(telegram_id)
     if not user:
         await bot.send_message(chat_id, f"❌ Пользователь {telegram_id} не найден")
@@ -722,7 +669,6 @@ async def _do_approve_from_notification(bot, chat_id: int, telegram_id: int, cus
 
 @router.callback_query(F.data.startswith("approve_skip_comment:"))
 async def approve_skip_comment_callback(callback: CallbackQuery, state: FSMContext):
-    """Пропустить комментарий — использовать авто."""
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
@@ -739,22 +685,18 @@ async def approve_skip_comment_callback(callback: CallbackQuery, state: FSMConte
 
 @router.callback_query(F.data == "join_waitlist")
 async def join_waitlist_callback(callback: CallbackQuery):
-    """Пользователь нажал «Встать в лист ожидания»."""
     user = callback.from_user
 
-    # Проверяем, не в листе ли уже
     if await is_in_waitlist(user.id):
         position = await get_waitlist_position(user.id)
         await callback.answer(f"Ты уже в очереди, позиция: {position}", show_alert=True)
         return
 
-    # Проверяем, не активен ли уже
     db_user = await get_user(user.id)
     if db_user and db_user["status"] == "active":
         await callback.answer("У тебя уже активная подписка", show_alert=True)
         return
 
-    # Добавляем в лист
     added = await add_to_waitlist(
         telegram_id=user.id,
         username=user.username or "",

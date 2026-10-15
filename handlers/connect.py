@@ -9,12 +9,25 @@ router = Router()
 
 @router.callback_query(F.data == "connect_help")
 async def connect_help(callback: CallbackQuery):
-    await callback.message.edit_text(
-        f"📖 <b>Как подключиться к {BOT_NAME}</b>\n\n"
-        "Выбери своё устройство:",
-        reply_markup=connect_keyboard(),
-        parse_mode="HTML"
-    )
+    try:
+        await callback.message.edit_text(
+            f"📖 <b>Как подключиться к {BOT_NAME}</b>\n\n"
+            "Выбери своё устройство:",
+            reply_markup=connect_keyboard(),
+            parse_mode="HTML"
+        )
+    except Exception:
+        # Сообщение с фото (после QR) — удаляем и шлём новое
+        try:
+            await callback.message.delete()
+        except Exception:
+            pass
+        await callback.message.answer(
+            f"📖 <b>Как подключиться к {BOT_NAME}</b>\n\n"
+            "Выбери своё устройство:",
+            reply_markup=connect_keyboard(),
+            parse_mode="HTML"
+        )
     await callback.answer()
 
 

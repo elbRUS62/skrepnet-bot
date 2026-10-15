@@ -1,28 +1,41 @@
 import logging
 import aiosqlite
-from config import DB_PATH
 
-from aiogram import Router, F
+from aiogram import Router
 from aiogram.types import Message
 from aiogram.filters import CommandStart, CommandObject
 
-from config import ADMIN_IDS, BOT_NAME
+from config import DB_PATH
 from database import (
-    get_user, create_user_request, increment_invites, add_invite,
-    is_in_waitlist, get_waitlist_position,
+    get_user,
+    increment_invites,
+    add_invite,
 )
-from keyboards import main_menu, admin_menu
 from .utils import sanitize_email
+from .menu import show_main_menu
 
 router = Router()
 logger = logging.getLogger(__name__)
 
 
 @router.message(CommandStart(deep_link=True))
-async def cmd_start_ref(message: Message, command: CommandObject):
-    args = command.args or ""
-    invited_by = None
+async def cmd_start_deeplink(message: Message, command: CommandObject):
+    """Обработка /start с deep-link:
+       - ?start=ref_<id> — реферальная ссылка
+       - ?start=link_<token> — привязка веб-пользователя
+    """
+    from .web_link import handle_web_link
 
+    args = command.args or ""
+
+    # Ветка 1: веб-привязка
+    if args.startswith("link_"):
+        token = args[5:]
+        await handle_web_link(message, token)
+        return
+
+    # Ветка 2: реферальная (существующая логика)
+    invited_by = None
     if args.startswith("ref_"):
         try:
             invited_by = int(args[4:])
@@ -34,9 +47,7 @@ async def cmd_start_ref(message: Message, command: CommandObject):
 
     existing = await get_user(message.from_user.id)
 
-    # Если пользователь НЕ в базе и пришёл по рефералке
     if existing is None and invited_by:
-        # Запоминаем в базе со статусом 'new'
         async with aiosqlite.connect(DB_PATH) as db:
             await db.execute("""
                 INSERT OR REPLACE INTO users
@@ -67,60 +78,8 @@ async def cmd_start_ref(message: Message, command: CommandObject):
                 f"{message.from_user.full_name}!\n\n"
                 f"Спасибо, что помогаешь проекту расти ❤️"
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Не удалось уведомить пригласившего {invited_by}: {e}")
 
-    await _show_start(message)
-
-
-@router.message(CommandStart())
-async def cmd_start(message: Message):
-    await _show_start(message)
-
-
-async def _show_start(message: Message):
-    user = await get_user(message.from_user.id)
-    admin = message.from_user.id in ADMIN_IDS
-    menu = admin_menu() if admin else main_menu()
-
-    # Проверяем, не в листе ли ожидания
-    in_waitlist = await is_in_waitlist(message.from_user.id)
-    if in_waitlist:
-        position = await get_waitlist_position(message.from_user.id)
-        await message.answer(
-            f"⏳ <b>Ты в листе ожидания</b>\n\n"
-            f"📋 Твоя позиция: <b>{position}</b>\n\n"
-            f"Мы напишем, когда освободится место.",
-            parse_mode="HTML",
-            reply_markup=menu
-        )
-        return
-
-    # Прогресс донатов
-    from .progress import render_progress
-    progress_line = await render_progress(short=True)
-
-    if user and user["status"] == "active":
-        await message.answer(
-            f"👋 С возвращением, {message.from_user.first_name}!\n\n"
-            f"У тебя активная подписка. Проверить статус — «🔑 Моя подписка».\n\n"
-            f"{progress_line}",
-            reply_markup=menu
-        )
-    elif user and user["status"] == "pending":
-        await message.answer(
-            "⏳ Твоя заявка на рассмотрении. Скоро админ её одобрит.",
-            reply_markup=menu
-        )
-    else:
-        await message.answer(
-            f"👋 Привет, {message.from_user.first_name}!\n\n"
-            f"Это бот для выдачи бесплатных подписок {BOT_NAME}.\n\n"
-            f"{progress_line}\n\n"
-            f"⚠️ Проект бесплатный, но сервер стоит ~3000 ₽/мес. "
-            f"Если хочешь помочь — жми «❤️ Поддержать проект».\n\n"
-            f"📢 Хочешь помочь проекту расти? Жми «👥 Пригласить друга» — "
-            f"чем больше людей, тем стабильнее сервер.\n\n"
-            f"Нажми «📦 Получить подписку», чтобы начать.",
-            reply_markup=menu
-        )
+    # Ветка 3: обычный deep-link (не ref, не link) — просто показать меню
+    await show_main_menu(message)

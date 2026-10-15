@@ -70,9 +70,7 @@ class DonationAlertsCentrifugo:
             }.get(currency, currency)
 
             logger.info(f"Новый донат: {username} - {amount} {currency}")
-            logger.info(f"Admin IDs: {self.admin_ids}")
-            
-            
+
             # Записываем донат в БД
             try:
                 from database import add_donation
@@ -86,7 +84,6 @@ class DonationAlertsCentrifugo:
             except Exception as e:
                 logger.error(f"❌ Ошибка записи доната в БД: {e}")
 
-
             text = (
                 f"💰 <b>Новый донат!</b>\n"
                 f"━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -98,7 +95,6 @@ class DonationAlertsCentrifugo:
                 text += f"\n💬 <b>Сообщение:</b>\n<i>{message}</i>"
 
             for admin_id in self.admin_ids:
-                logger.info(f"Отправляю админу {admin_id}...")
                 try:
                     result = await self.bot.send_message(
                         admin_id,
@@ -109,6 +105,7 @@ class DonationAlertsCentrifugo:
                     logger.info(f"✅ Отправлено админу {admin_id}: message_id={result.message_id}")
                 except Exception as e:
                     logger.error(f"❌ Ошибка отправки админу {admin_id}: {type(e).__name__}: {e}")
+
         except Exception as e:
             logger.error(f"❌ Ошибка обработки доната: {type(e).__name__}: {e}")
 
@@ -157,15 +154,74 @@ class DonationAlertsCentrifugo:
                     logger.error(f"Ошибка обработки сообщения: {e}")
 
 
+async def _notify_admins(bot: Bot, admin_ids: list, text: str):
+    """Отправить уведомление всем админам (тихое)."""
+    for admin_id in admin_ids:
+        try:
+            await bot.send_message(
+                admin_id,
+                text,
+                parse_mode="HTML",
+                disable_notification=True
+            )
+        except Exception as e:
+            logger.error(f"Не удалось уведомить админа {admin_id}: {e}")
+
+
 async def start_donation_socket(bot: Bot, admin_ids: list, token: str):
     if not token:
         logger.warning("DONATION_ALERTS_TOKEN не задан")
         return
 
     client = DonationAlertsCentrifugo(token)
+
+    was_connected = False
+    first_attempt = True
+    attempt = 0
+
     while True:
+        attempt += 1
         try:
+            logger.info(f"🔄 Centrifugo: попытка #{attempt}")
             await client.start(bot, admin_ids)
+
+            # Сюда попадаем, если start() завершился без исключения
+            if not was_connected:
+                was_connected = True
+                attempt = 0
+
+                if not first_attempt:
+                    await _notify_admins(
+                        bot, admin_ids,
+                        "✅ <b>Centrifugo DonationAlerts восстановлен</b>\n\n"
+                        "Подключение к WebSocket восстановлено. "
+                        "Уведомления о донатах снова работают."
+                    )
+            first_attempt = False
+
         except Exception as e:
-            logger.error(f"Ошибка Centrifugo: {e}. Переподключение через 10 сек...")
-            await asyncio.sleep(10)
+            err_msg = f"{type(e).__name__}: {e}"
+            logger.error(f"❌ Ошибка Centrifugo: {err_msg}")
+
+            if was_connected:
+                was_connected = False
+                await _notify_admins(
+                    bot, admin_ids,
+                    "⚠️ <b>Centrifugo DonationAlerts недоступен</b>\n\n"
+                    f"<code>{err_msg}</code>\n\n"
+                    "Уведомления о донатах временно не работают. "
+                    "Донаты через Telegram Stars продолжают работать.\n\n"
+                    "Бот попробует переподключиться автоматически."
+                )
+            elif first_attempt:
+                logger.warning(
+                    "⚠️ Centrifugo недоступен при старте бота — "
+                    "уведомление админам не отправлено"
+                )
+
+            first_attempt = False
+
+        # Экспоненциальная задержка: 10, 20, 40, 80, 160, 300, 300... сек
+        delay = min(10 * (2 ** min(attempt - 1, 5)), 300)
+        logger.info(f"⏳ Следующая попытка Centrifugo через {delay} сек")
+        await asyncio.sleep(delay)

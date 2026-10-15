@@ -9,7 +9,10 @@ import aiosqlite
 
 sys.path.insert(0, '/root/skrepnet-bot')
 
-from database import init_db, get_invite_link, use_invite_link, get_user
+from database import (
+    init_db, get_invite_link, use_invite_link, get_user,
+    increment_invites, add_invite, mark_invite_counted,
+)
 from xui_client import XUIClient
 from config import DB_PATH, SUBSCRIPTION_DAYS, BOT_TOKEN, ADMIN_IDS, BOT_NAME
 from handlers.utils import sanitize_email
@@ -19,6 +22,10 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__, template_folder='web/templates', static_folder='web/static')
 
+
+# ============================================================
+# УВЕДОМЛЕНИЕ АДМИНАМ О НОВОМ ВЕБ-ПОЛЬЗОВАТЕЛЕ
+# ============================================================
 
 async def notify_admin_new_web_user(friend_username: str, telegram_id: int, inviter_id: int, sub_url: str):
     """Отправить уведомление админам о новом пользователе через веб-выдачу."""
@@ -43,6 +50,44 @@ async def notify_admin_new_web_user(friend_username: str, telegram_id: int, invi
         await bot.session.close()
 
 
+# ============================================================
+# ДОКУМЕНТЫ НА САЙТЕ
+# ============================================================
+
+DOCS_META = {
+    "rules": {
+        "title": "Правила использования",
+        "template": "docs/rules.html",
+    },
+    "privacy": {
+        "title": "Политика конфиденциальности",
+        "template": "docs/privacy.html",
+    },
+    "terms": {
+        "title": "Пользовательское соглашение",
+        "template": "docs/terms.html",
+    },
+}
+
+
+@app.route('/docs/<doc_key>')
+def docs_page(doc_key):
+    """Отдаёт страницу документа из templates/docs/."""
+    meta = DOCS_META.get(doc_key)
+    if not meta:
+        return render_template('error.html',
+            message="Документ не найден"), 404
+
+    return render_template('docs.html',
+        title=meta["title"],
+        content=render_template(meta["template"]),
+        updated=datetime.now().strftime("%d.%m.%Y"))
+
+
+# ============================================================
+# СТРАНИЦА ПРИГЛАШЕНИЯ
+# ============================================================
+
 @app.route('/invite/<token>')
 def invite_page(token):
     """Страница активации приглашения."""
@@ -65,6 +110,10 @@ def invite_page(token):
         inviter_name=inviter_name,
         friend_username=invite["friend_username"] or "друг")
 
+
+# ============================================================
+# АКТИВАЦИЯ ПОДПИСКИ
+# ============================================================
 
 @app.route('/api/activate/<token>', methods=['POST'])
 def activate(token):
@@ -104,6 +153,24 @@ def activate(token):
             return {'error': f'Ошибка создания подписки: {e}'}
 
         await use_invite_link(token, xui_email, sub_id)
+
+        # Засчитываем приглашение A (один раз — идемпотентно)
+        try:
+            counted = await mark_invite_counted(token)
+            if counted:
+                await increment_invites(invite["created_by"])
+                await add_invite(
+                    inviter_id=invite["created_by"],
+                    invited_user_id=invite["friend_user_id"],
+                    invited_username=invite["friend_username"],
+                    invited_first_name=None,
+                    invite_type="no_tg",
+                )
+                logger.info(f"✅ Приглашение засчитано: inviter={invite['created_by']}, token={token}")
+            else:
+                logger.warning(f"⚠️ Приглашение уже было засчитано: token={token}")
+        except Exception as e:
+            logger.error(f"❌ Ошибка засчёта приглашения: {e}")
 
         # Уведомляем админов
         try:
@@ -149,6 +216,10 @@ def activate(token):
         return jsonify(result), 400
     return jsonify(result)
 
+
+# ============================================================
+# ЗАПУСК
+# ============================================================
 
 if __name__ == '__main__':
     asyncio.run(init_db())

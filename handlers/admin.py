@@ -19,7 +19,7 @@ from database import (
 )
 from xui_client import XUIClient
 from keyboards import (
-    admin_menu, admin_manage_keyboard,
+    admin_manage_keyboard,
     admin_panel_keyboard, email_conflict_keyboard, subscription_keyboard,
     users_list_keyboard, admin_submenu_users,
 )
@@ -34,10 +34,10 @@ logger = logging.getLogger(__name__)
 # СТАТИСТИКА
 # ============================================================
 
-@router.message(Command("stats"))
-@router.message(F.text == "📊 Статистика")
-async def cmd_stats(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
+@router.callback_query(F.data == "admin_stats")
+async def admin_stats_callback(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
         return
 
     async with aiosqlite.connect(DB_PATH) as db:
@@ -100,22 +100,37 @@ async def cmd_stats(message: Message):
     else:
         text += "🏆 Пока нет приглашений."
 
-    await message.answer(text, parse_mode="HTML")
+    await callback.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_main")]
+        ])
+    )
+    await callback.answer()
 
 
 # ============================================================
 # МЕНЮ УПРАВЛЕНИЯ
 # ============================================================
 
-@router.message(F.text == "🛠 Управление")
-async def admin_manage(message: Message):
-    if message.from_user.id not in ADMIN_IDS:
+@router.callback_query(F.data == "admin_manage")
+async def admin_manage_callback(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
         return
-    await message.answer(
+    await callback.message.edit_text(
         "🛠 <b>Управление ботом</b>\n\nВыбери действие:",
         reply_markup=admin_manage_keyboard(),
         parse_mode="HTML"
     )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "admin_manage_back")
+async def admin_manage_back(callback: CallbackQuery):
+    """Алиас для возврата в меню «Управление»."""
+    await admin_manage_callback(callback)
 
 
 @router.callback_query(F.data == "admin_close")
@@ -126,20 +141,6 @@ async def admin_close(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data == "admin_manage_back")
-async def admin_manage_back(callback: CallbackQuery):
-    """Вернуться в меню «Управление»."""
-    if callback.from_user.id not in ADMIN_IDS:
-        return
-
-    await callback.message.edit_text(
-        "🛠 <b>Управление ботом</b>\n\nВыбери действие:",
-        reply_markup=admin_manage_keyboard(),
-        parse_mode="HTML"
-    )
-    await callback.answer()
-
-
 # ============================================================
 # РАССЫЛКА
 # ============================================================
@@ -147,10 +148,36 @@ async def admin_manage_back(callback: CallbackQuery):
 @router.callback_query(F.data == "admin_broadcast")
 async def admin_broadcast_start(callback: CallbackQuery, state: FSMContext):
     if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
         return
-    await callback.message.edit_text("📢 Введи текст для рассылки:")
+
+    await callback.message.edit_text(
+        "📢 <b>Рассылка</b>\n\n"
+        "Отправь текст сообщения, которое уйдёт всем активным пользователям.\n\n"
+        "Поддерживается HTML: <b>жирный</b>, <i>курсив</i>, <code>код</code>.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Отмена", callback_data="admin_broadcast_cancel")]
+        ])
+    )
     await state.set_state(AdminStates.waiting_broadcast_text)
     await callback.answer()
+
+
+@router.callback_query(F.data == "admin_broadcast_cancel")
+async def admin_broadcast_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена рассылки."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    await state.clear()
+    await callback.message.edit_text(
+        "🛠 <b>Управление ботом</b>\n\nВыбери действие:",
+        reply_markup=admin_manage_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer("Отменено")
 
 
 @router.message(AdminStates.waiting_broadcast_text)
@@ -176,16 +203,20 @@ async def admin_broadcast_process(message: Message, state: FSMContext):
         await asyncio.sleep(0.05)
 
     await message.answer(
-        f"📢 Рассылка завершена\n\n"
+        f"📢 <b>Рассылка завершена</b>\n\n"
         f"✅ Отправлено: {sent}\n"
         f"❌ Не доставлено: {failed}",
-        reply_markup=admin_menu()
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")],
+            [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_main")],
+        ])
     )
     await state.clear()
 
 
 # ============================================================
-# ССЫЛКА НА ПАНЕЛЬ 3x-ui
+# ПАНЕЛЬ 3x-ui
 # ============================================================
 
 @router.callback_query(F.data == "admin_panel")
@@ -194,7 +225,7 @@ async def admin_panel_link(callback: CallbackQuery):
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
 
-    await callback.message.answer(
+    await callback.message.edit_text(
         "🔐 <b>Вход в панель 3x-ui</b>\n\n"
         "Нажми кнопку ниже — браузер откроет страницу входа.\n"
         "Пароль подставит менеджер паролей, если он у тебя есть.",
@@ -210,7 +241,6 @@ async def admin_panel_link(callback: CallbackQuery):
 
 @router.callback_query(F.data == "admin_list_requests")
 async def admin_list_requests(callback: CallbackQuery):
-    """Список заявок с кнопками выбора."""
     if callback.from_user.id not in ADMIN_IDS:
         return
     await _show_requests_list(callback)
@@ -218,7 +248,6 @@ async def admin_list_requests(callback: CallbackQuery):
 
 
 async def _show_requests_list(callback: CallbackQuery):
-    """Общая функция отрисовки списка заявок."""
     requests = await get_pending_requests()
 
     if not requests:
@@ -246,7 +275,7 @@ async def _show_requests_list(callback: CallbackQuery):
 
     buttons.append([InlineKeyboardButton(
         text="⬅️ Назад",
-        callback_data="admin_manage_back"
+        callback_data="admin_manage"
     )])
 
     await callback.message.edit_text(
@@ -258,7 +287,6 @@ async def _show_requests_list(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("req_view:"))
 async def request_view_callback(callback: CallbackQuery):
-    """Карточка конкретной заявки."""
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
@@ -324,7 +352,6 @@ async def request_view_callback(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("req_approve:"))
 async def request_approve_callback(callback: CallbackQuery, state: FSMContext):
-    """Шаг 1: спрашиваем комментарий для 3x-ui."""
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
@@ -359,6 +386,10 @@ async def request_approve_callback(callback: CallbackQuery, state: FSMContext):
             [InlineKeyboardButton(
                 text="⏭ Пропустить",
                 callback_data=f"req_skip_comment:{telegram_id}"
+            )],
+            [InlineKeyboardButton(
+                text="❌ Отмена",
+                callback_data="admin_comment_cancel"
             )]
         ])
     )
@@ -366,9 +397,24 @@ async def request_approve_callback(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 
+@router.callback_query(F.data == "admin_comment_cancel")
+async def admin_comment_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена ввода комментария."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    await state.clear()
+    await callback.message.edit_text(
+        "🛠 <b>Управление ботом</b>\n\nВыбери действие:",
+        reply_markup=admin_manage_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer("Отменено")
+
+
 @router.callback_query(F.data.startswith("req_reject:"))
 async def request_reject_callback(callback: CallbackQuery):
-    """Отклонить заявку из карточки."""
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
@@ -388,7 +434,6 @@ async def request_reject_callback(callback: CallbackQuery):
 
 @router.callback_query(F.data.startswith("req_delete:"))
 async def request_delete_callback(callback: CallbackQuery):
-    """Удалить пользователя из БД."""
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
@@ -398,14 +443,12 @@ async def request_delete_callback(callback: CallbackQuery):
     await delete_user(telegram_id)
     await callback.answer("🗑 Удалён", show_alert=True)
 
-    # Проверяем лист ожидания
     await notify_next_in_queue(callback.bot)
-
     await _show_requests_list(callback)
 
 
 # ============================================================
-# СПИСКИ ПОЛЬЗОВАТЕЛЕЙ С ПАГИНАЦИЕЙ
+# СПИСКИ ПОЛЬЗОВАТЕЛЕЙ
 # ============================================================
 
 PER_PAGE = 10
@@ -501,7 +544,7 @@ async def _show_users_list(callback: CallbackQuery, action: str, page: int):
             f"❌ Нет пользователей с подходящим статусом.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_manage_back")]
+                [InlineKeyboardButton(text="⬅️ Назад", callback_data="admin_manage")]
             ])
         )
         return
@@ -540,10 +583,11 @@ async def user_action_callback(callback: CallbackQuery, state: FSMContext):
             f"👤 {user['first_name']}\n"
             f"🆔 <code>{telegram_id}</code>\n"
             f"📧 {user['xui_email']}\n\n"
-            f"На сколько <b>дней</b> продлить?",
+            f"На сколько <b>дней</b> продлить?\n\n"
+            f"Введи число от 1 до 3650.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="⬅️ Отмена", callback_data="admin_manage_back")]
+                [InlineKeyboardButton(text="⬅️ Отмена", callback_data="admin_extend_cancel")]
             ])
         )
         await state.set_state(AdminStates.waiting_extend_days)
@@ -561,8 +605,6 @@ async def user_action_callback(callback: CallbackQuery, state: FSMContext):
             logger.error(f"Ошибка удаления из 3x-ui: {e}")
 
         await delete_user(telegram_id)
-
-        # Проверяем лист ожидания
         await notify_next_in_queue(callback.bot)
 
         await callback.message.edit_text(
@@ -595,6 +637,22 @@ async def user_action_callback(callback: CallbackQuery, state: FSMContext):
         return
 
 
+@router.callback_query(F.data == "admin_extend_cancel")
+async def admin_extend_cancel(callback: CallbackQuery, state: FSMContext):
+    """Отмена продления подписки."""
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("Не твоя кнопка", show_alert=True)
+        return
+
+    await state.clear()
+    await callback.message.edit_text(
+        "🛠 <b>Управление ботом</b>\n\nВыбери действие:",
+        reply_markup=admin_manage_keyboard(),
+        parse_mode="HTML"
+    )
+    await callback.answer("Отменено")
+
+
 @router.message(AdminStates.waiting_extend_days)
 async def admin_extend_days_process(message: Message, state: FSMContext):
     if message.from_user.id not in ADMIN_IDS:
@@ -605,20 +663,35 @@ async def admin_extend_days_process(message: Message, state: FSMContext):
         if days < 1 or days > 3650:
             raise ValueError
     except ValueError:
-        await message.answer("❌ Введи число от 1 до 3650.")
+        await message.answer(
+            "❌ Введи число от 1 до 3650.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Отмена", callback_data="admin_extend_cancel")]
+            ])
+        )
         return
 
     data = await state.get_data()
     telegram_id = data.get("target_tg_id")
 
     if not telegram_id:
-        await message.answer("❌ Ошибка: не найден пользователь")
+        await message.answer(
+            "❌ Ошибка: не найден пользователь",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")]
+            ])
+        )
         await state.clear()
         return
 
     user = await get_user(telegram_id)
     if not user:
-        await message.answer(f"❌ Пользователь {telegram_id} не найден")
+        await message.answer(
+            f"❌ Пользователь {telegram_id} не найден",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")]
+            ])
+        )
         await state.clear()
         return
 
@@ -626,11 +699,9 @@ async def admin_extend_days_process(message: Message, state: FSMContext):
         async with XUIClient() as xui:
             new_expiry = await xui.update_expiry(user["xui_email"], days=days)
 
-            # Увеличиваем счётчик продлений
             new_count = await increment_renew_count(telegram_id)
             date_str = new_expiry.strftime("%d.%m.%Y")
 
-            # Строим comment
             base_comment = f"TG: {telegram_id}"
             if user["username"]:
                 base_comment += f" @{user['username']}"
@@ -652,7 +723,10 @@ async def admin_extend_days_process(message: Message, state: FSMContext):
             f"📅 Новая дата: {new_expiry.strftime('%d.%m.%Y')}\n"
             f"⏱ +{days} дней",
             parse_mode="HTML",
-            reply_markup=admin_menu()
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")],
+                [InlineKeyboardButton(text="🏠 В главное меню", callback_data="back_to_main")],
+            ])
         )
 
         try:
@@ -670,7 +744,12 @@ async def admin_extend_days_process(message: Message, state: FSMContext):
 
     except Exception as e:
         logger.error(f"❌ Ошибка продления: {e}")
-        await message.answer(f"❌ Ошибка: {e}", reply_markup=admin_menu())
+        await message.answer(
+            f"❌ Ошибка: {e}",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")]
+            ])
+        )
 
     await state.clear()
 
@@ -696,7 +775,6 @@ async def admin_menu_users_callback(callback: CallbackQuery):
 # ============================================================
 
 async def _do_approve(bot, chat_id: int, telegram_id: int, custom_comment: str = None):
-    """Создать клиента в 3x-ui с комментарием."""
     user = await get_user(telegram_id)
     if not user:
         await bot.send_message(chat_id, f"❌ Пользователь {telegram_id} не найден")
@@ -765,7 +843,6 @@ async def _do_approve(bot, chat_id: int, telegram_id: int, custom_comment: str =
 
 @router.message(AdminStates.waiting_comment)
 async def comment_input_process(message: Message, state: FSMContext):
-    """Админ ввёл кастомный комментарий."""
     if message.from_user.id not in ADMIN_IDS:
         return
 
@@ -773,7 +850,12 @@ async def comment_input_process(message: Message, state: FSMContext):
     telegram_id = data.get("approve_tg_id")
 
     if not telegram_id:
-        await message.answer("❌ Ошибка: не найден пользователь")
+        await message.answer(
+            "❌ Ошибка: не найден пользователь",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🛠 В управление", callback_data="admin_manage")]
+            ])
+        )
         await state.clear()
         return
 
@@ -787,7 +869,6 @@ async def comment_input_process(message: Message, state: FSMContext):
 
 @router.callback_query(F.data.startswith("req_skip_comment:"))
 async def skip_comment_callback(callback: CallbackQuery, state: FSMContext):
-    """Админ нажал «Пропустить»."""
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("Не твоя кнопка", show_alert=True)
         return
@@ -796,3 +877,27 @@ async def skip_comment_callback(callback: CallbackQuery, state: FSMContext):
     await _do_approve(callback.bot, callback.message.chat.id, telegram_id, None)
     await state.clear()
     await callback.answer()
+
+
+# ============================================================
+# КОМАНДА /stats (на всякий случай)
+# ============================================================
+
+@router.message(Command("stats"))
+async def cmd_stats(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        async with db.execute("SELECT COUNT(*) as c FROM users") as cur:
+            total = (await cur.fetchone())["c"]
+
+        async with db.execute("SELECT COUNT(*) as c FROM users WHERE status = 'active'") as cur:
+            active = (await cur.fetchone())["c"]
+
+    await message.answer(
+        f"📊 Всего: {total}\n✅ Активных: {active}",
+        parse_mode="HTML"
+    )

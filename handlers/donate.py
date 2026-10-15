@@ -3,9 +3,8 @@ import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, LabeledPrice, PreCheckoutQuery
 
-from config import ADMIN_IDS, DONATE_TEXT, DONATE_URL, BOT_USERNAME, BOT_NAME, SUPPORT_USERNAME
-from database import get_user
-from keyboards import donate_keyboard, donate_stars_keyboard, share_keyboard, support_keyboard
+from config import ADMIN_IDS, DONATE_TEXT, DONATE_URL, BOT_NAME
+from keyboards import donate_keyboard, donate_stars_keyboard
 
 router = Router()
 logger = logging.getLogger(__name__)
@@ -71,7 +70,6 @@ async def process_successful_payment(message: Message):
 
     logger.info(f"⭐ Донат звёздами: {message.from_user.id} - {amount} ⭐")
 
-    # Уведомление админам
     admin_text = (
         f"⭐ <b>Новый донат звёздами!</b>\n"
         f"━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -91,43 +89,10 @@ async def process_successful_payment(message: Message):
         except Exception as e:
             logger.error(f"Ошибка отправки админу {admin_id}: {e}")
 
-    # Благодарность пользователю
     await message.answer(
         f"⭐ <b>Спасибо за поддержку!</b>\n\n"
         f"Ты отправил <code>{amount} ⭐</code>.\n"
         f"Это помогает серверу работать.\n\n"
         f"❤️ Ты лучший!",
-        parse_mode="HTML"
-    )
-
-
-@router.message(F.text == "👥 Пригласить друга")
-async def invite_friend(message: Message):
-    user = await get_user(message.from_user.id)
-
-    if not user:
-        await message.answer("Сначала получи подписку через «📦 Получить подписку».")
-        return
-
-    invites = user["invites_count"] if user["invites_count"] else 0
-    ref_link = f"https://t.me/{BOT_USERNAME}?start=ref_{message.from_user.id}"
-
-    await message.answer(
-        f"👥 Пригласи друга — помоги проекту расти!\n\n"
-        f"Твоя ссылка:\n`{ref_link}`\n\n"
-        f"📊 Ты уже пригласил: {invites} чел.\n\n"
-        f"💡 Отправь ссылку друзьям — они получат бесплатный VPN.",
-        reply_markup=share_keyboard(BOT_USERNAME, message.from_user.id),
-        parse_mode="Markdown"
-    )
-
-@router.message(F.text == "🆘 Техподдержка")
-async def support_button(message: Message):
-    await message.answer(
-        f"🆘 <b>Техподдержка {BOT_NAME}</b>\n\n"
-        "Если у тебя возникли вопросы, проблемы с подключением "
-        "или ты хочешь сообщить о сбое — напиши нам.\n\n"
-        f"📢 Канал техподдержки: @{SUPPORT_USERNAME}",
-        reply_markup=support_keyboard(),
         parse_mode="HTML"
     )

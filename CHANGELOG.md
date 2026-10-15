@@ -6,6 +6,74 @@
 
 ## [Unreleased]
 
+## [2.0] — 2026-10-15
+
+### Добавлено
+
+#### Автопривязка веб-пользователей
+- Веб-пользователь (B) получает подписку через сайт, затем открывает бота `/start` — бот **автоматически** находит активную ссылку по `friend_user_id` и привязывает
+- **Токен `link_<...>` больше не нужен** — B просто открывает `@skrepnet_bot` и жмёт Start
+- Новый модуль `handlers/web_link.py` (`handle_web_link`, `bind_by_tg_id`)
+- Функции `find_pending_web_link_for_tg`, `bind_web_user_to_telegram` в `database.py`
+
+#### Приглашение через контакты
+- «➕ Добавить без TG» → **ReplyKeyboard** с кнопкой «👤 Выбрать из контактов»
+- `KeyboardButtonRequestUsers` — получаем **точный** TG ID + username друга
+- `handle_shared_user` в `handlers/invite.py`
+
+#### Inline-меню
+- **Все кнопки** переведены в **InlineKeyboard** (кроме «❤️ Поддержать проект»)
+- Новый модуль `handlers/menu.py` — `show_main_menu`, `back_to_main`, все `menu_*` callback'и
+- ReplyKeyboard внизу — **только** «❤️ Поддержать проект»
+
+#### Отмена во всех FSM-сценариях
+- `admin_broadcast_cancel` — рассылка
+- `admin_extend_cancel` — продление
+- `admin_comment_cancel` / `approve_comment_cancel` — комментарий к заявке
+- `manual_email_cancel` — ручной email
+
+#### Документы на сайте
+- Страницы `/docs/rules`, `/docs/privacy`, `/docs/terms` на своём сайте
+- Шаблоны `web/templates/docs/*.html`
+- В боте — по-прежнему telegra.ph (быстро)
+
+#### Автоочистка веб-выдач
+- Job `cleanup_abandoned_web_invites` — раз в день в 5:00
+- Удаляет клиентов из 3x-ui + записи, если веб-юзер не привязался за 30 дней
+
+#### Уведомления Centrifugo
+- Экспоненциальный ретрай (10 → 300 сек)
+- Уведомление админам при падении и восстановлении
+
+#### Засчёт приглашения при активации
+- `counted` — флаг, что приглашение засчитано (идемпотентно)
+- `mark_invite_counted` в `database.py`
+- Убран двойной засчёт (был при создании ссылки + при активации)
+
+### Изменено
+- `create_invite_link` — удаляет старые неактивные ссылки того же A на того же B
+- `handlers/start.py` — 3 ветки: `ref_*`, `link_*`, обычный
+- `cmd_start` — проверка автопривязки перед показом меню
+- `main_menu()` / `admin_menu()` — только «❤️ Поддержать проект»
+- Все тексты: «друг» → «пользователь»
+
+### Удалено
+- `link_<token>` deep-link как основной способ привязки (оставлен как fallback)
+- `invite_manual_start`, `invite_manual_process` из `handlers/invite.py`
+- Дублирующие текстовые хендлеры из `subscription.py`, `donate.py`, `admin.py`
+- `create_web_user` (не нужен)
+
+### Исправлено
+- `UnicodeDecodeError` в `handlers/web_link.py` (кодировка UTF-8)
+- `there is no text in the message to edit` — fallback `delete + answer` для QR
+- `get_abandoned_web_invites` — `julianday` с коррекцией `+3 hours` (MSK vs UTC)
+- Дублирование засчёта приглашения
+
+### Миграции БД
+- `ALTER TABLE invite_links ADD COLUMN counted INTEGER DEFAULT 0`
+- `ALTER TABLE invite_links ADD COLUMN bound_to_tg_id INTEGER DEFAULT NULL`
+- `ALTER TABLE invite_links ADD COLUMN bound_at TIMESTAMP DEFAULT NULL`
+
 ## [1.6] — 2026-10-14
 
 ### Добавлено

@@ -84,6 +84,22 @@ async def init_db():
         if "renew_count" not in columns:
             await db.execute("ALTER TABLE users ADD COLUMN renew_count INTEGER DEFAULT 0")
             logger.info("🔧 Добавлено поле renew_count в таблицу users")
+        # Миграция: добавляем поля в invite_links для веб-привязки
+        async with db.execute("PRAGMA table_info(invite_links)") as cur:
+            il_columns = [row[1] for row in await cur.fetchall()]
+
+        if "counted" not in il_columns:
+            await db.execute("ALTER TABLE invite_links ADD COLUMN counted INTEGER DEFAULT 0")
+            logger.info("🔧 Добавлено поле counted в invite_links")
+
+        if "bound_to_tg_id" not in il_columns:
+            await db.execute("ALTER TABLE invite_links ADD COLUMN bound_to_tg_id INTEGER DEFAULT NULL")
+            logger.info("🔧 Добавлено поле bound_to_tg_id в invite_links")
+
+        if "bound_at" not in il_columns:
+            await db.execute("ALTER TABLE invite_links ADD COLUMN bound_at TIMESTAMP DEFAULT NULL")
+            logger.info("🔧 Добавлено поле bound_at в invite_links")
+            
         await db.commit()
 
 
@@ -262,10 +278,35 @@ async def get_all_admins() -> list:
 async def create_invite_link(telegram_id: int, friend_user_id: int = None,
                               friend_username: str = None) -> str:
     """Создаёт одноразовую ссылку-приглашение.
-    Возвращает уникальный токен."""
+    Возвращает уникальный токен.
+
+    При создании удаляет старые НЕактивированные ссылки того же A
+    на того же друга — чтобы не копить мусор.
+    """
     token = secrets.token_urlsafe(24)
 
     async with aiosqlite.connect(DB_PATH) as db:
+        # Удаляем старые неактивные ссылки того же A на того же друга
+        # Условие: (A, friend) совпадают, ссылка не использована
+        if friend_user_id is not None:
+            # Друг известен по TG ID — удаляем по нему
+            await db.execute("""
+                DELETE FROM invite_links
+                WHERE created_by = ?
+                  AND is_used = 0
+                  AND friend_user_id = ?
+            """, (telegram_id, friend_user_id))
+
+        elif friend_username:
+            # Друг известен по username — удаляем по нему
+            await db.execute("""
+                DELETE FROM invite_links
+                WHERE created_by = ?
+                  AND is_used = 0
+                  AND friend_username = ?
+            """, (telegram_id, friend_username))
+
+        # Создаём новую ссылку
         await db.execute("""
             INSERT INTO invite_links
             (token, created_by, friend_user_id, friend_username)
@@ -583,3 +624,150 @@ async def increment_renew_count(telegram_id: int) -> int:
         ) as cur:
             row = await cur.fetchone()
             return row[0] if row else 0
+
+# ============================================================
+# ВЕБ-ПРИВЯЗКА (для /start link_<token>)
+# ============================================================
+
+async def get_invite_link_any(token: str):
+    """Найти invite_link по токену БЕЗ фильтра is_used/7 дней.
+    Используется для привязки веб-юзера к Telegram.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT * FROM invite_links WHERE token = ?", (token,)
+        ) as cur:
+            return await cur.fetchone()
+
+
+async def mark_invite_counted(token: str) -> bool:
+    """Пометить, что приглашение по этой ссылке засчитано.
+    Возвращает True, если пометка установлена (не была установлена раньше).
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        cursor = await db.execute(
+            "UPDATE invite_links SET counted = 1 WHERE token = ? AND counted = 0",
+            (token,)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def bind_web_user_to_telegram(
+    token: str,
+    telegram_id: int,
+    username: str,
+    first_name: str,
+) -> int | None:
+    """Создать запись в users для веб-юзера, привязавшегося к боту.
+
+    Возвращает telegram_id созданного пользователя или None, если привязка невозможна:
+      - ссылка не найдена
+      - ссылка не активирована (is_used=0)
+      - ссылка уже привязана к другому TG
+      - пользователь уже есть в users
+    """
+    link = await get_invite_link_any(token)
+    if not link:
+        return None
+    if not link["is_used"]:
+        return None
+    if link["bound_to_tg_id"] is not None:
+        return None
+
+    # Проверим, что такого пользователя ещё нет в users
+    existing = await get_user(telegram_id)
+    if existing:
+        return None
+
+    # expires_at: used_at + 30 дней (как при активации на сайте)
+    from datetime import datetime, timedelta
+    used_at = link["used_at"] or datetime.now().isoformat()
+    try:
+        used_dt = datetime.fromisoformat(str(used_at).replace(" ", "T"))
+    except Exception:
+        used_dt = datetime.now()
+    expires = used_dt + timedelta(days=SUBSCRIPTION_DAYS)
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO users
+            (telegram_id, username, first_name, xui_email, sub_id,
+             status, invited_by, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, 'active', ?, datetime('now'), ?)
+        """, (
+            telegram_id,
+            username or "",
+            first_name or "",
+            link["xui_email"],
+            link["sub_id"],
+            link["created_by"],
+            expires,
+        ))
+        await db.execute(
+            "UPDATE invite_links SET bound_to_tg_id = ?, bound_at = datetime('now') WHERE token = ?",
+            (telegram_id, token)
+        )
+        await db.commit()
+
+    return telegram_id
+
+
+async def get_abandoned_web_invites(days: int = 30) -> list:
+    """Найти веб-выдачи, активированные 30+ дней назад, но не привязанные.
+
+    Использует julianday с коррекцией +3 часа (MSK), потому что
+    Flask сохраняет used_at в локальном времени, а SQLite — в UTC.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM invite_links
+            WHERE is_used = 1
+              AND counted = 1
+              AND bound_to_tg_id IS NULL
+              AND julianday('now', '+3 hours') - julianday(used_at) >= ?
+        """, (days,)) as cur:
+            return await cur.fetchall()
+
+
+async def mark_abandoned_invite_deleted(token: str):
+    """Пометить, что «брошенный» клиент удалён из 3x-ui.
+    Можно либо удалить запись, либо просто отметить — на выбор.
+    Здесь: помечаем counted = -1 (маркер «уже обработано»).
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE invite_links SET counted = -1 WHERE token = ?",
+            (token,)
+        )
+        await db.commit()
+        
+# ============================================================
+# АВТОПРИВЯЗКА ПО TG ID (без токена)
+# ============================================================
+
+async def find_pending_web_link_for_tg(telegram_id: int):
+    """Найти активную ссылку, созданную для этого TG (friend_user_id).
+
+    Условия:
+      - friend_user_id = telegram_id
+      - is_used = 1          (активирована на сайте)
+      - bound_to_tg_id IS NULL (ещё не привязана)
+      - counted = 1          (приглашение A засчитано)
+
+    Возвращает последнюю (свежую) или None.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT * FROM invite_links
+            WHERE friend_user_id = ?
+              AND is_used = 1
+              AND counted = 1
+              AND bound_to_tg_id IS NULL
+            ORDER BY used_at DESC
+            LIMIT 1
+        """, (telegram_id,)) as cur:
+            return await cur.fetchone()
