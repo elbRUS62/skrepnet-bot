@@ -118,6 +118,7 @@ class XUIClient:
             "totalGB": client.get("totalGB", 0),
             "comment": client.get("comment", ""),
             "subId": client.get("subId", ""),
+            "group": client.get("group", ""),
             "tgId": tg_id,
         }
         result = await self._post(f"/panel/api/clients/update/{email}", payload)
@@ -160,6 +161,8 @@ class XUIClient:
             "totalGB": client.get("totalGB", 0),
             "comment": comment,
             "subId": client.get("subId", ""),
+            "group": client.get("group", ""),
+            "tgId": client.get("tgId", 0),
         }
         result = await self._post(f"/panel/api/clients/update/{email}", payload)
         return result.get("success", False)
