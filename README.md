@@ -9,12 +9,14 @@
 [![3x-ui](https://img.shields.io/badge/3x--ui-API-green)](https://github.com/MHSanaei/3x-ui)
 [![Stars](https://img.shields.io/badge/⭐_Telegram_Stars-поддержка-yellow)]()
 
-- 🤖 **Бот в Telegram:** `@your_bot` (настраивается через `BOT_USERNAME`)
-- 🆘 **Поддержка:** `@your_support` (настраивается через `SUPPORT_USERNAME`)
-- 📌 **Версия:** v2.0.0 ([CHANGELOG](CHANGELOG.md))
+🤖 **Бот в Telegram:** `@your_bot` (настраивается через `BOT_USERNAME`)  
+🆘 **Поддержка:** `@your_support` (настраивается через `SUPPORT_USERNAME`)  
+📌 **Версия:** v2.0.0 ([CHANGELOG](CHANGELOG.md))  
 
-> **Живой пример:** [@skrepnet_bot](https://t.me/skrepnet_bot) (BOT_NAME=`SkrepNet`, SUPPORT_USERNAME=`SkrepNet_support`).  
-> Это **шаблон** — разверните **свой** бот с **другим** именем, просто изменив `.env`.
+---
+
+**Живой пример:** [@skrepnet_bot](https://t.me/skrepnet_bot) (BOT_NAME=`SkrepNet`, SUPPORT_USERNAME=`SkrepNet_support`).    
+Это **шаблон** — разверните **свой** бот с **другим** именем, просто изменив `.env`.
 
 </div>
 
