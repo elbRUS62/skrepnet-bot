@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🛡️ SkrepNet Bot
+# 🛡️ Telegram VPN Bot
 
 **Telegram-бот для выдачи бесплатных подписок Hysteria2 через панель 3x-ui, с реферальной системой, донатами, листом ожидания и веб-выдачей без Telegram.**
 
@@ -9,8 +9,8 @@
 [![3x-ui](https://img.shields.io/badge/3x--ui-API-green)](https://github.com/MHSanaei/3x-ui)
 [![Stars](https://img.shields.io/badge/⭐_Telegram_Stars-поддержка-yellow)]()
 
-- 🤖 **Бот в Telegram:** [@skrepnet_bot](https://t.me/skrepnet_bot)
-- 🆘 **Поддержка:** [@SkrepNet_support](https://t.me/SkrepNet_support)
+- 🤖 **Бот в Telegram:** `@your_bot` (настраивается через `BOT_USERNAME`)
+- 🆘 **Поддержка:** `@your_support` (настраивается через `SUPPORT_USERNAME`)
 - 📌 **Версия:** v2.0.0 ([CHANGELOG](CHANGELOG.md))
 
 </div>
@@ -121,7 +121,7 @@
 - `BOT_TOKEN` — токен бота от @BotFather
 - `ADMIN_ID` — Telegram ID админов (через запятую)
 - `BOT_USERNAME` — username бота (без @)
-- `BOT_NAME` — отображаемое имя бота (по умолчанию `SkrepNet`)
+- `BOT_NAME` — **отображаемое имя бота** (по умолчанию `SkrepNet`). Используется во всех текстах, комментариях 3x-ui и как **имя группы** в 3x-ui
 - `SUPPORT_USERNAME` — username поддержки (без @, по умолчанию `SkrepNet_support`)
 
 ### 3x-ui
@@ -211,7 +211,7 @@
 4. A отправляет ссылку B (SMS / WhatsApp / голосом)
 5. B (без VPN) открывает ссылку на сайте → принимает условия → получает QR + подписку
 6. B подключается к VPN через Happ
-7. B открывает `@skrepnet_bot` → жмёт **Start** — бот **автоматически** находит подписку по TG ID и **привязывает**
+7. B открывает `@your_bot` → жмёт **Start** — бот **автоматически** находит подписку по TG ID и **привязывает**
 8. B становится **обычным пользователем** → может продлевать через бота
 
 **Никаких токенов вручную.** B просто открывает бота.
