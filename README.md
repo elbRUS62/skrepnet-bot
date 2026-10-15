@@ -9,18 +9,12 @@
 [![3x-ui](https://img.shields.io/badge/3x--ui-API-green)](https://github.com/MHSanaei/3x-ui)
 [![Stars](https://img.shields.io/badge/⭐_Telegram_Stars-поддержка-yellow)]()
 
-🤖 **Бот в Telegram:** `@your_bot` (настраивается через `BOT_USERNAME`)  
-🆘 **Поддержка:** `@your_support` (настраивается через `SUPPORT_USERNAME`)  
-📌 **Версия:** v2.0.0 ([CHANGELOG](CHANGELOG.md))  
-
----
+[![Version](https://img.shields.io/badge/version-v2.0.0-blue)](CHANGELOG.md)
 
 **Живой пример:** [@skrepnet_bot](https://t.me/skrepnet_bot) (BOT_NAME=`SkrepNet`, SUPPORT_USERNAME=`SkrepNet_support`).    
 Это **шаблон** — разверните **свой** бот с **другим** именем, просто изменив `.env`.
 
 </div>
-
----
 
 ## ✨ Возможности
 
@@ -75,8 +69,6 @@
 - 🔧 Systemd-автозапуск (Restart=always)
 - 🔌 DonationAlerts WebSocket через Centrifugo (экспоненциальный ретрай + уведомления админам)
 
----
-
 ## 🏗️ Архитектура
 
 - **Бот** работает на зарубежном VPS (прямой доступ к Telegram API)
@@ -117,8 +109,6 @@
     systemctl restart skrepnet-bot     # перезапуск
     ls -la backups/                    # бэкапы
 
----
-
 ## 🔧 Переменные `.env`
 
 ### Telegram
@@ -156,8 +146,6 @@
 - `DB_PATH` — путь к базе данных (по умолчанию `skrepnet.db`)
 - `BOT_VERSION` — версия бота (по умолчанию `2.0.0`)
 
----
-
 ## 📁 Структура проекта
 
     bot.py                  # точка входа
@@ -192,8 +180,6 @@
             ├── privacy.html
             └── terms.html
 
----
-
 ## 🔄 Как работает выдача подписки
 
 ### Обычный пользователь
@@ -216,7 +202,7 @@
 4. A отправляет ссылку B (SMS / WhatsApp / голосом)
 5. B (без VPN) открывает ссылку на сайте → принимает условия → получает QR + подписку
 6. B подключается к VPN через Happ
-7. B открывает `@your_bot` → жмёт **Start** — бот **автоматически** находит подписку по TG ID и **привязывает**
+7. B открывает `@skrepnet_bot` → жмёт **Start** — бот **автоматически** находит подписку по TG ID и **привязывает**
 8. B становится **обычным пользователем** → может продлевать через бота
 
 **Никаких токенов вручную.** B просто открывает бота.
@@ -235,8 +221,6 @@
 - Валидация обязательных переменных при старте (`config.py`)
 - **Жёсткая проверка TG ID** при автопривязке — только тот B, для кого создана ссылка
 - Dependabot, CodeQL, Secret scanning — включены
-
----
 
 ## 🗺️ Roadmap
 
@@ -267,14 +251,10 @@
 - [ ] Статистика донатов через API
 - [ ] Инструкции для Apple TV, Samsung TV, LG TV
 
----
-
 ## 📌 Версия
 
 **Текущая версия: v2.0.0**
 
 История версий — в [CHANGELOG.md](CHANGELOG.md).
-
----
 
 @elbRUS62
