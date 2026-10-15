@@ -58,16 +58,24 @@ async def accept_terms(callback: CallbackQuery):
 
     if is_referral:
         try:
-            async with XUIClient() as xui:
-                auto_comment = f"TG: {callback.from_user.id}"
-                if callback.from_user.username:
-                    auto_comment += f" @{callback.from_user.username}"
-                if invited_by:
-                    auto_comment += f" | ref: {invited_by}"
-                else:
-                    auto_comment += " | bot"
+            user_part = f"@{callback.from_user.username}" if callback.from_user.username else str(callback.from_user.id)
 
-                sub_id = await xui.add_client(xui_email, comment=auto_comment)
+            if invited_by:
+                inviter = await get_user(invited_by)
+                if inviter and inviter["username"]:
+                    inviter_part = f"@{inviter['username']} ({invited_by})"
+                else:
+                    inviter_part = str(invited_by)
+                auto_comment = f"{user_part} | реф от: {inviter_part}"
+            else:
+                auto_comment = f"{user_part} | bot"
+
+            async with XUIClient() as xui:
+                sub_id = await xui.add_client(
+                    xui_email,
+                    comment=auto_comment,
+                    tg_id=callback.from_user.id,
+                )
                 await approve_user(callback.from_user.id, sub_id)
                 sub_url = xui.build_sub_url(sub_id)
 
@@ -172,10 +180,8 @@ async def approve_callback(callback: CallbackQuery, state: FSMContext):
         await callback.answer(f"Неверный статус: {user['status']}", show_alert=True)
         return
 
-    auto_comment = f"TG: {telegram_id}"
-    if user["username"]:
-        auto_comment += f" @{user['username']}"
-    auto_comment += " | bot"
+    user_part = f"@{user['username']}" if user["username"] else str(telegram_id)
+    auto_comment = f"{user_part} | bot"
 
     await state.update_data(approve_tg_id=telegram_id, from_notification=True)
 
@@ -293,10 +299,8 @@ async def renew_callback(callback: CallbackQuery):
             new_count = await increment_renew_count(callback.from_user.id)
             date_str = new_expiry.strftime("%d.%m.%Y")
 
-            base_comment = f"TG: {callback.from_user.id}"
-            if user["username"]:
-                base_comment += f" @{user['username']}"
-            base_comment += " | бот"
+            user_part = f"@{user['username']}" if user["username"] else str(callback.from_user.id)
+            base_comment = f"{user_part} | бот"
 
             comment = f"{base_comment} | продлён ×{new_count} ({date_str})"
 
@@ -344,13 +348,15 @@ async def retry_email_callback(callback: CallbackQuery):
         return
 
     try:
-        async with XUIClient() as xui:
-            auto_comment = f"TG: {telegram_id}"
-            if user["username"]:
-                auto_comment += f" @{user['username']}"
-            auto_comment += " | bot (renamed)"
+        user_part = f"@{user['username']}" if user["username"] else str(telegram_id)
+        auto_comment = f"{user_part} | bot (renamed)"
 
-            sub_id = await xui.add_client(new_email, comment=auto_comment)
+        async with XUIClient() as xui:
+            sub_id = await xui.add_client(
+                new_email,
+                comment=auto_comment,
+                tg_id=telegram_id,
+            )
             await approve_user(telegram_id, sub_id)
             sub_url = xui.build_sub_url(sub_id)
 
@@ -477,13 +483,15 @@ async def manual_email_process(message: Message, state: FSMContext):
         return
 
     try:
-        async with XUIClient() as xui:
-            auto_comment = f"TG: {telegram_id}"
-            if user["username"]:
-                auto_comment += f" @{user['username']}"
-            auto_comment += " | manual (admin)"
+        user_part = f"@{user['username']}" if user["username"] else str(telegram_id)
+        auto_comment = f"{user_part} | manual (admin)"
 
-            sub_id = await xui.add_client(new_email, comment=auto_comment)
+        async with XUIClient() as xui:
+            sub_id = await xui.add_client(
+                new_email,
+                comment=auto_comment,
+                tg_id=telegram_id,
+            )
             await approve_user(telegram_id, sub_id)
             sub_url = xui.build_sub_url(sub_id)
 
@@ -565,6 +573,9 @@ async def use_existing_email_callback(callback: CallbackQuery):
             if not sub_id:
                 raise Exception(f"У клиента {existing_email} нет subId — используй другое имя")
 
+            # Обновляем tgId, чтобы фильтр в 3x-ui работал
+            await xui.update_tg_id(existing_email, telegram_id)
+
             await approve_user(telegram_id, sub_id)
             sub_url = xui.build_sub_url(sub_id)
 
@@ -609,19 +620,21 @@ async def _do_approve_from_notification(bot, chat_id: int, telegram_id: int, cus
         await bot.send_message(chat_id, f"❌ Пользователь {telegram_id} не найден")
         return
 
-    auto_comment = f"TG: {telegram_id}"
-    if user["username"]:
-        auto_comment += f" @{user['username']}"
+    user_part = f"@{user['username']}" if user["username"] else str(telegram_id)
 
     if custom_comment:
-        comment = f"{custom_comment} | {auto_comment}"
+        comment = f"{user_part} | {custom_comment}"
     else:
-        comment = f"{auto_comment} | bot"
+        comment = f"{user_part} | bot"
 
     try:
         async with XUIClient() as xui:
             try:
-                sub_id = await xui.add_client(user["xui_email"], comment=comment)
+                sub_id = await xui.add_client(
+                    user["xui_email"],
+                    comment=comment,
+                    tg_id=telegram_id,
+                )
                 await approve_user(telegram_id, sub_id)
                 sub_url = xui.build_sub_url(sub_id)
             except Exception as e:

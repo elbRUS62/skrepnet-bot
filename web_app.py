@@ -137,15 +137,23 @@ def activate(token):
         xui_email = sanitize_email(name, telegram_id)
 
         try:
-            async with XUIClient() as xui:
-                auto_comment = f"web | inviter TG: {invite['created_by']}"
-                if invite["friend_username"]:
-                    auto_comment = f"@{invite['friend_username']} | " + auto_comment
+            # Формат: @ivan | web → bot | от: @elb62
+            user_part = f"@{invite['friend_username']}" if invite["friend_username"] else "guest"
 
+            inviter_part = str(invite['created_by'])
+            if invite['created_by']:
+                inviter = await get_user(invite['created_by'])
+                if inviter and inviter['username']:
+                    inviter_part = f"@{inviter['username']}"
+
+            auto_comment = f"{user_part} | web → bot | от: {inviter_part}"
+
+            async with XUIClient() as xui:
                 sub_id = await xui.add_client(
                     xui_email,
                     days=SUBSCRIPTION_DAYS,
-                    comment=auto_comment
+                    comment=auto_comment,
+                    tg_id=invite["friend_user_id"] or 0,
                 )
                 sub_url = xui.build_sub_url(sub_id)
         except Exception as e:

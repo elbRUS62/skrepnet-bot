@@ -711,6 +711,18 @@ async def bind_web_user_to_telegram(
         )
         await db.commit()
 
+    # Обновляем tgId в 3x-ui (если клиент был создан без него)
+    try:
+        from xui_client import XUIClient
+        async with XUIClient() as xui:
+            updated = await xui.update_tg_id(link["xui_email"], telegram_id)
+            if updated:
+                logger.info(f"✅ tgId={telegram_id} обновлён для {link['xui_email']}")
+            else:
+                logger.warning(f"⚠️ Не удалось обновить tgId для {link['xui_email']}")
+    except Exception as e:
+        logger.warning(f"⚠️ Ошибка update_tg_id для {link['xui_email']}: {e}")
+
     return telegram_id
 
 

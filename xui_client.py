@@ -43,13 +43,20 @@ class XUIClient:
                 raise Exception("Unauthorized: API token is invalid or expired")
             return await resp.json()
 
-    async def add_client(self, email: str, days: int = None, comment: str = None) -> str:
+    async def add_client(
+        self,
+        email: str,
+        days: int = None,
+        comment: str = None,
+        tg_id: int = 0,
+    ) -> str:
         """Создать клиента в 3x-ui и добавить в группу BOT_NAME.
 
         Args:
             email: email клиента (используется как имя)
             days: срок подписки в днях
-            comment: комментарий для панели 3x-ui
+            comment: комментарий для панели 3x-ui (человекочитаемый)
+            tg_id: Telegram ID пользователя (для фильтрации в 3x-ui)
         """
         if days is None:
             days = SUBSCRIPTION_DAYS
@@ -65,7 +72,7 @@ class XUIClient:
                 "expiryTime": expires_ms,
                 "limitIp": LIMIT_IP,
                 "totalGB": 0,
-                "tgId": 0,
+                "tgId": tg_id,
                 "subId": sub_id,
                 "comment": comment or ""
             },
@@ -83,7 +90,6 @@ class XUIClient:
             })
             logger.info(f"✅ {email} добавлен в группу {BOT_NAME}")
         except Exception as e:
-            # Не критично — клиент уже создан, просто не в группе
             logger.warning(f"⚠️ Не удалось добавить {email} в группу {BOT_NAME}: {e}")
 
         return sub_id
@@ -95,9 +101,27 @@ class XUIClient:
         if not result.get("success"):
             raise Exception(f"Get client failed: {result}")
         obj = result["obj"]
-        # 3x-ui возвращает {client: {...}, inboundIds: [...], ...}
-        # Разворачиваем, чтобы код обращался к полям напрямую (client.get("subId"))
         return obj.get("client", obj)
+
+    async def update_tg_id(self, email: str, tg_id: int) -> bool:
+        """Обновить только поле tgId у клиента (не трогая остальные)."""
+        try:
+            client = await self.get_client(email)
+        except Exception:
+            return False
+
+        payload = {
+            "email": email,
+            "expiryTime": client.get("expiryTime", 0),
+            "limitIp": client.get("limitIp", LIMIT_IP),
+            "enable": client.get("enable", True),
+            "totalGB": client.get("totalGB", 0),
+            "comment": client.get("comment", ""),
+            "subId": client.get("subId", ""),
+            "tgId": tg_id,
+        }
+        result = await self._post(f"/panel/api/clients/update/{email}", payload)
+        return result.get("success", False)
 
     async def update_expiry(self, email: str, days: int = SUBSCRIPTION_DAYS):
         """Продлить подписку."""

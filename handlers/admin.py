@@ -367,10 +367,8 @@ async def request_approve_callback(callback: CallbackQuery, state: FSMContext):
         await callback.answer("⚠️ Уже активна", show_alert=True)
         return
 
-    auto_comment = f"TG: {telegram_id}"
-    if user["username"]:
-        auto_comment += f" @{user['username']}"
-    auto_comment += " | bot"
+    user_part = f"@{user['username']}" if user["username"] else str(telegram_id)
+    auto_comment = f"{user_part} | bot"
 
     await state.update_data(approve_tg_id=telegram_id)
 
@@ -702,10 +700,8 @@ async def admin_extend_days_process(message: Message, state: FSMContext):
             new_count = await increment_renew_count(telegram_id)
             date_str = new_expiry.strftime("%d.%m.%Y")
 
-            base_comment = f"TG: {telegram_id}"
-            if user["username"]:
-                base_comment += f" @{user['username']}"
-            base_comment += " | бот"
+            user_part = f"@{user['username']}" if user["username"] else str(telegram_id)
+            base_comment = f"{user_part} | бот"
 
             comment = f"{base_comment} | продлён ×{new_count} ({date_str})"
 
@@ -780,19 +776,21 @@ async def _do_approve(bot, chat_id: int, telegram_id: int, custom_comment: str =
         await bot.send_message(chat_id, f"❌ Пользователь {telegram_id} не найден")
         return
 
-    auto_comment = f"TG: {telegram_id}"
-    if user["username"]:
-        auto_comment += f" @{user['username']}"
+    user_part = f"@{user['username']}" if user["username"] else str(telegram_id)
 
     if custom_comment:
-        comment = f"{custom_comment} | {auto_comment}"
+        comment = f"{user_part} | {custom_comment}"
     else:
-        comment = f"{auto_comment} | bot"
+        comment = f"{user_part} | bot"
 
     try:
         async with XUIClient() as xui:
             try:
-                sub_id = await xui.add_client(user["xui_email"], comment=comment)
+                sub_id = await xui.add_client(
+                    user["xui_email"],
+                    comment=comment,
+                    tg_id=telegram_id,
+                )
                 await approve_user(telegram_id, sub_id)
                 sub_url = xui.build_sub_url(sub_id)
             except Exception as e:
